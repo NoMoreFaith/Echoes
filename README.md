@@ -2,21 +2,74 @@
 
 Echoes is a local-first D&D initiative tracker with an NPC Collection and integrated statblock dice rolling created by **Neil Simpson** — **nomorefaith@gmail.com**.
 
-## Recommended edition: installable PWA
+## Open and install Echoes
 
-Echoes is packaged as a Progressive Web App so it can be installed on **ChromeOS** and also on Windows, macOS, or Linux through Chrome/Edge. Once installed, it launches from the app launcher in a standalone window and works offline after its first successful load.
+Echoes is an installable Progressive Web App (PWA). After installation it opens in its own window, appears in your app launcher or Start menu, and works offline after it has loaded successfully once.
 
-PWA installation requires the project to be served from HTTPS (or localhost for development). Opening 'index.html' directly remains useful as a preview, but 'file://' pages cannot install a service worker or become an offline PWA.
+Use the Echoes app address, not the GitHub repository page and not a downloaded `index.html` file. The expected address for this project is:
 
-## Data safety
+**https://nomorefaith.github.io/Echoes/**
 
-Open **Data & backup** inside Echoes and:
+If that address shows a 404 page, Echoes has not yet been published with GitHub Pages. The project owner should complete the one-time publishing steps below.
 
-1. Install the app.
-2. Request persistent storage.
-3. Choose the exact external `Echoes-library.json` file in any locally available or synchronised folder.
+### One-time publishing setup (project owner only)
 
-The external file is updated after changes and survives clearing site data. Use **Resume permission** to reconnect the remembered file handle, or **Choose a different library** when intentionally changing files. Manual complete export/import is also available.
+1. Sign in to GitHub and open **https://github.com/NoMoreFaith/Echoes**.
+2. Select **Settings** near the top of the repository. If it is hidden, open the repository tab menu first.
+3. In the left-hand menu, select **Pages** under **Code and automation**.
+4. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
+5. Set **Branch** to **main**, leave the folder as **/(root)**, and select **Save**.
+6. Wait a few minutes, then refresh the Pages settings screen. GitHub will display the published site address when it is ready.
+7. Open **https://nomorefaith.github.io/Echoes/** in Chrome and follow the installation steps below.
+
+This setup is only needed once. Later changes pushed to the `main` branch will be published automatically.
+
+### Chromebook / ChromeOS
+
+1. Connect the Chromebook to the internet for the first installation.
+2. Open **Chrome**.
+3. Type or paste **https://nomorefaith.github.io/Echoes/** into the address bar and press **Enter**.
+4. Wait for Echoes to finish loading.
+5. Click the **Install** icon at the right-hand end of Chrome's address bar. It looks like a small computer screen with a downward arrow.
+6. Click **Install** in the confirmation window.
+7. Echoes will open in its own window. In future, open the Chromebook **Launcher**, search for **Echoes**, and select it. You can right-click its launcher icon and choose **Pin to shelf** for quicker access.
+
+If the Install icon is not visible, open Chrome's **three-dot menu** and select **Install Echoes**. Depending on the Chrome version, this option may appear inside **Cast, save and share**.
+
+### Windows, macOS, or Linux using Chrome
+
+1. Open **Google Chrome**.
+2. Type or paste **https://nomorefaith.github.io/Echoes/** into the address bar and press **Enter**.
+3. Wait for Echoes to finish loading.
+4. Click the **Install** icon at the right-hand end of the address bar, then click **Install**.
+5. Echoes will open in its own window. On Windows it can then be launched from the **Start menu**; on macOS or Linux it appears with your other installed applications.
+
+If the Install icon is not visible, open Chrome's **three-dot menu** and select **Install Echoes**. Depending on the Chrome version, this option may appear inside **Cast, save and share**.
+
+### Windows using Microsoft Edge
+
+1. Open **Microsoft Edge** and visit **https://nomorefaith.github.io/Echoes/**.
+2. Open the **three-dot menu**.
+3. Select **Apps**, then **Install Echoes**.
+4. Confirm the installation. Echoes will then be available from the Windows **Start menu**.
+
+### Opening a downloaded copy (preview only)
+
+You can double-click `index.html`, or right-click it and choose **Open with > Google Chrome**, to preview Echoes from a downloaded folder. This is not the installed edition: pages opened from `file://` cannot install the offline service worker and will not behave as a full PWA.
+
+## First-time data safety setup
+
+After installing Echoes:
+
+1. Open Echoes and select **Backup** in the left-hand menu. The page title is **Data & library**.
+2. Select **Install app** if Echoes reports that the installed edition is not active.
+3. Select **Request persistent storage**.
+4. Select **Choose Echoes-library.json**.
+5. Choose an existing `Echoes-library.json`, or create one in a folder you can access from the Chromebook. A locally synchronised Google Drive folder is suitable.
+6. Approve read and write access when Chrome asks.
+7. Confirm that Echoes shows **Connected and saving automatically**.
+
+Echoes remembers the selected file and saves changes to it automatically. If Chrome asks again later, use **Resume permission** to reconnect the same file. Use **Choose a different library** only when you intentionally want to change files.
 
 See [HELP.md](HELP.md) for the complete user guide.
 
