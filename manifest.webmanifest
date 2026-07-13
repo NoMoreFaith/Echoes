@@ -1,0 +1,34 @@
+{
+  "id": "./",
+  "name": "Echoes — D&D Initiative Tracker",
+  "short_name": "Echoes",
+  "description": "A local-first D&D initiative tracker for parties, encounters, monsters, and spells.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#12100f",
+  "theme_color": "#12100f",
+  "orientation": "landscape",
+  "categories": ["games", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
