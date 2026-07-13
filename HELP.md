@@ -19,9 +19,9 @@ Use all three layers shown under **Data & backup**:
 
 1. **Install Echoes** for the standalone offline app.
 2. **Protect app storage** to request persistent storage and prevent automatic browser eviction.
-3. **Choose new backup file** and save 'Echoes-backup.json' in ChromeOS **My files** or **Google Drive**. Echoes updates this file after changes.
+3. **Choose Echoes-library.json** and select or create that exact file in any folder exposed by the system picker. Echoes remembers the file and updates it after changes.
 
-Explicitly clearing all site data necessarily removes the app's working database and its remembered file permission. It does not remove the external JSON file. Reinstall/open Echoes, choose **Reconnect & restore existing**, and select that file to recover the complete state.
+Explicitly clearing all site data removes the temporary working copy and the IndexedDB file handle, but not the external JSON file. Normally, use **Resume permission** to grant access to the remembered file. After site data is cleared, choose the same Echoes-library.json again because the saved handle no longer exists.
 
 Use **Export all data** for additional dated snapshots. **Import full backup** restores one of those snapshots after confirmation.
 
@@ -119,6 +119,6 @@ Use **Export all data** for additional dated snapshots. **Import full backup** r
 ## Data durability
 
 - Browser storage is only an Echoes working copy.
-- Connect an external **Echoes-library.json** in Google Drive or Chromebook My files so permanent Bestiary entries, NPCs, parties, encounters, spells, and combat data live outside the browser.
+- Choose the exact external **Echoes-library.json** in any locally available or synchronised folder so permanent Bestiary entries, NPCs, parties, encounters, spells, and combat data live outside the browser.
 - Echoes loads a connected library as the authoritative copy and updates it after every change.
-- Reconnect the same file after clearing browser data or moving to another Chromebook.
+- Use **Resume permission** when Chrome asks for access again. Use **Choose a different library** only when intentionally changing files, when the stored file is unavailable, or after site data erased the saved handle.
