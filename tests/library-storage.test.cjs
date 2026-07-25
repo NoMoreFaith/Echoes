@@ -35,6 +35,9 @@ assert.match(storage, /id: 'echoes-library'/);
 assert.match(storage, /indexedDB\.open\(HANDLE_DB/);
 assert.match(storage, /setTimeout\(writeLibraryFile, 1000\)/);
 assert.match(storage, /await validateFileBeforeAutomaticWrite\(\);[\s\S]*await writeStateToHandle\(state\)/);
+assert.match(storage, /parsed\.state = currentState\(\)/);
+assert.match(storage, /sessionStorage\.getItem\(RELOAD_SOURCE_KEY\) === sourceFingerprint/);
+assert.match(storage, /await writeStateToHandle\(current\)/);
 assert.doesNotMatch(resumeBody, /showSaveFilePicker|showOpenFilePicker/);
 assert.match(resumeBody, /permissionFor\(libraryHandle, true\)/);
 assert.match(storage, /connected: 'Connected and saving automatically'/);
@@ -47,5 +50,6 @@ assert.match(app, /const CONDITIONS = \['Banished',/);
 assert.match(html, /id="chooseDifferentLibraryBtn"/);
 assert.match(html, /id="resumeBackupBtn"/);
 assert.match(html, /id="retryBackupBtn"/);
+assert.match(html, /id="libraryWarning" class="library-warning" hidden/);
 
 console.log('Echoes library storage tests passed');

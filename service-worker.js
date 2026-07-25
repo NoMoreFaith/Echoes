@@ -1,4 +1,4 @@
-const CACHE_NAME = 'echoes-app-v24';
+const CACHE_NAME = 'echoes-app-v25';
 const APP_SHELL = [
   './',
   './index.html',
@@ -6,7 +6,7 @@ const APP_SHELL = [
   './app.js?v=24',
   './npcs.js?v=21',
   './library-core.js?v=21',
-  './library-storage.js?v=21',
+  './library-storage.js?v=22',
   './monsters.js',
   './spells.js',
   './manifest.webmanifest',

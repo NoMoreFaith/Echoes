@@ -10,6 +10,6 @@ for (const entry of entries) {
   const localPath = entry.replace(/^\.\//, '').split('?')[0];
   assert.ok(fs.existsSync(localPath), `Missing service-worker asset: ${localPath}`);
 }
-assert.match(worker, /echoes-app-v24/);
+assert.match(worker, /echoes-app-v25/);
 
 console.log('Echoes service-worker asset tests passed');

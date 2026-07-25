@@ -6,7 +6,7 @@ const ids = [...html.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
 const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
 assert.deepEqual(duplicates, [], `Duplicate HTML IDs: ${duplicates.join(', ')}`);
 assert.match(html, /library-core\.js\?v=21/);
-assert.match(html, /library-storage\.js\?v=21/);
+assert.match(html, /library-storage\.js\?v=22/);
 assert.doesNotMatch(html, /pwa-data\.js/);
 
 console.log('Echoes HTML structure tests passed');

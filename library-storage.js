@@ -5,6 +5,7 @@
   const HANDLE_DB = 'echoes-backup-handles';
   const HANDLE_STORE = 'handles';
   const HANDLE_KEY = 'automatic-backup';
+  const RELOAD_SOURCE_KEY = 'echoes-library-reload-source';
   const FILE_OPTIONS = {
     id: 'echoes-library',
     suggestedName: 'Echoes-library.json',
@@ -38,6 +39,16 @@
 
   function payloadFor(state) {
     return core.createPayload(state);
+  }
+
+  function stateFingerprint(state) {
+    const text = JSON.stringify(core.validateState(state));
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${text.length}:${hash >>> 0}`;
   }
 
   function replaceWorkingCopy(state) {
@@ -118,8 +129,9 @@
     const file = await libraryHandle.getFile();
     const parsed = core.parseLibraryText(await file.text());
     if (parsed.wasEmpty) {
+      parsed.state = currentState();
       libraryState = 'saving';
-      libraryMessage = 'Initialising the empty file as an Echoes library.';
+      libraryMessage = 'Saving the current campaign into the empty library file.';
       renderDataStatus();
       await writeStateToHandle(parsed.state);
     } else {
@@ -141,20 +153,38 @@
       }
       const parsed = await readSelectedLibrary();
       const currentSerialized = localStorage.getItem(STORAGE_KEY);
+      let current = null;
       let same = false;
       if (currentSerialized) {
-        try { same = JSON.stringify(core.validateState(JSON.parse(currentSerialized))) === JSON.stringify(parsed.state); }
+        try {
+          current = core.validateState(JSON.parse(currentSerialized));
+          same = JSON.stringify(current) === JSON.stringify(parsed.state);
+        }
         catch { same = false; }
       }
       libraryState = parsed.wasEmpty ? 'saved' : 'connected';
       libraryMessage = parsed.wasEmpty ? 'The empty file was initialised successfully.' : 'Connected and saving automatically.';
       renderDataStatus();
       if (!same) {
+        const sourceFingerprint = stateFingerprint(parsed.state);
+        if (current && sessionStorage.getItem(RELOAD_SOURCE_KEY) === sourceFingerprint) {
+          sessionStorage.removeItem(RELOAD_SOURCE_KEY);
+          libraryState = 'saving';
+          libraryMessage = 'Updating the external library to the current Echoes format.';
+          renderDataStatus();
+          await writeStateToHandle(current);
+          libraryState = 'saved';
+          libraryMessage = 'External library upgraded successfully.';
+          renderDataStatus();
+          return true;
+        }
+        sessionStorage.setItem(RELOAD_SOURCE_KEY, sourceFingerprint);
         replaceWorkingCopy(parsed.state);
         location.hash = '';
         location.reload();
         return true;
       }
+      sessionStorage.removeItem(RELOAD_SOURCE_KEY);
       if (announce) toast(parsed.wasEmpty ? 'Empty Echoes library initialised' : 'External Echoes library connected');
       return true;
     } catch (error) {
