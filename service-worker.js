@@ -1,9 +1,9 @@
-const CACHE_NAME = 'echoes-app-v23';
+const CACHE_NAME = 'echoes-app-v24';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css?v=23',
-  './app.js?v=23',
+  './app.js?v=24',
   './npcs.js?v=21',
   './library-core.js?v=21',
   './library-storage.js?v=21',

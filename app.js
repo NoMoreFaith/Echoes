@@ -39,6 +39,8 @@
   let state = load();
   let monsterPage = 0;
   let combatPickerSelections=new Map();
+  let combatPickerTarget='combat';
+  let pendingEncounterMembers=[];
   const spellFilters={school:new Set(),casting:new Set(),classes:new Set()};
   let toastTimer;
 
@@ -311,10 +313,11 @@
   }
   function closeDialog() { $('#appDialog').close(); }
 
-  function openAddCombatant() {
+  function openAddCombatant(target='combat') {
+    combatPickerTarget=target;
     combatPickerSelections=new Map();
     const body=`<div class="tab-row"><button type="button" class="tab-button active" data-picker-tab="party">Party</button><button type="button" class="tab-button" data-picker-tab="monster">Monsters</button><button type="button" class="tab-button" data-picker-tab="quick">Quick add</button></div><div id="pickerContent"></div>`;
-    showDialog('Combat setup','Add combatants',body,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmAddBtn" class="button primary">Add selected</button>');
+    showDialog(target==='encounter'?'Preparation':'Combat setup',target==='encounter'?'Build new encounter':'Add combatants',body,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmAddBtn" class="button primary">Add selected</button>');
     renderPicker('party');
   }
   function pickerSelectionKey(kind,id) { return kind+':'+id; }
@@ -332,7 +335,7 @@
     $$('.tab-button').forEach(b=>b.classList.toggle('active',b.dataset.pickerTab===tab));
     const out=$('#pickerContent');
     if(tab==='party') {
-      out.innerHTML=state.parties.length?state.parties.map(p=>`<div class="detail-section"><h3>${esc(p.name)}</h3><div class="picker-list">${p.members.map(m=>{const already=pcAlreadyInCombat(m);return pickerItem('pc',m.id,m.name,`${m.className||'PC'} · AC ${m.ac} · HP ${m.hp}${already?' · Already in combat':''}`,already);}).join('')}</div></div>`).join(''):'<div class="empty-collection">Create a party first.</div>';
+      out.innerHTML=state.parties.length?state.parties.map(p=>`<div class="detail-section"><h3>${esc(p.name)}</h3><div class="picker-list">${p.members.map(m=>{const already=combatPickerTarget==='combat'&&pcAlreadyInCombat(m);return pickerItem('pc',m.id,m.name,`${m.className||'PC'} · AC ${m.ac} · HP ${m.hp}${already?' · Already in combat':''}`,already);}).join('')}</div></div>`).join(''):'<div class="empty-collection">Create a party first.</div>';
     } else if(tab==='monster') {
       out.innerHTML=`<label class="field full">SEARCH BESTIARY<input id="pickerSearch" placeholder="Monster name…"></label><div id="monsterPickerList" class="picker-list" style="margin-top:12px"></div>`; renderMonsterPicker('');
     } else {
@@ -352,22 +355,29 @@
     $('#monsterPickerList').innerHTML=matches.map(m=>pickerItem('monster',m.id,m.name,`CR ${m.challenge_rating} · AC ${m.armor_class} · HP ${m.hit_points} · Initiative ${formatModifier(m.initiative_modifier)}`,false,m.initiative_modifier)).join('')||'<div class="empty-collection">No monsters found.</div>';
   }
   function confirmAdd() {
-    const tab=$('#pickerContent').dataset.tab;rememberVisibleCombatPickerSelections();let addedCount=0;
+    const tab=$('#pickerContent').dataset.tab;rememberVisibleCombatPickerSelections();const additions=[];
     if(tab==='quick') {
       const name=$('#quickName').value.trim();
-      if(name){state.combat.combatants.push({id:uid(),added:Date.now(),kind:'monster',name,type:$('#quickType').value,ac:num($('#quickAc').value,10),hp:num($('#quickHp').value,10),maxHp:num($('#quickHp').value,10),initiative:num($('#quickInit').value,10),dex:10,conditions:[],actions:[],special_abilities:[]});addedCount++;}
+      if(name)additions.push({id:uid(),added:Date.now(),kind:'monster',name,type:$('#quickType').value,ac:num($('#quickAc').value,10),hp:num($('#quickHp').value,10),maxHp:num($('#quickHp').value,10),initiative:num($('#quickInit').value,10),dex:10,conditions:[],actions:[],special_abilities:[]});
     }
     [...combatPickerSelections.values()].forEach(selection=>{
       if(selection.kind==='monster') {
         const m=state.monsters.find(x=>x.id===selection.id);if(!m)return;const monsterCopy=structuredClone(m);delete monsterCopy.original;
-        state.combat.combatants.push({...monsterCopy,id:uid(),sourceId:m.id,added:Date.now()+Math.random(),kind:'monster',ac:m.armor_class,maxHp:m.hit_points,hp:m.hit_points,initiative:rollMonsterInitiative(m),dex:m.dexterity||10,conditions:[]});addedCount++;
+        additions.push({...monsterCopy,id:uid(),sourceId:m.id,added:Date.now()+Math.random(),kind:'monster',ac:m.armor_class,maxHp:m.hit_points,hp:m.hit_points,initiative:rollMonsterInitiative(m),dex:m.dexterity||10,conditions:[]});
       } else {
-        const m=state.parties.flatMap(p=>p.members).find(x=>x.id===selection.id);if(!m||pcAlreadyInCombat(m))return;
-        state.combat.combatants.push({...structuredClone(m),id:uid(),sourceId:m.id,added:Date.now()+Math.random(),kind:'pc',maxHp:m.hp,hp:m.hp,initiative:num(selection.initiative,10),dex:10,conditions:[]});addedCount++;
+        const m=state.parties.flatMap(p=>p.members).find(x=>x.id===selection.id);if(!m||(combatPickerTarget==='combat'&&pcAlreadyInCombat(m)))return;
+        additions.push({...structuredClone(m),id:uid(),sourceId:m.id,added:Date.now()+Math.random(),kind:'pc',maxHp:m.hp,hp:m.hp,initiative:num(selection.initiative,10),dex:10,conditions:[]});
       }
     });
-    if(!addedCount)return toast('Select at least one combatant');
-    combatPickerSelections.clear();sortCombatants();state.combat.turn=0;state.combat.selectedId=state.combat.combatants[0]?.id;save();closeDialog();renderCombat();toast(addedCount+' combatant'+(addedCount===1?'':'s')+' added');
+    if(!additions.length)return toast('Select at least one combatant');
+    combatPickerSelections.clear();
+    if(combatPickerTarget==='encounter') {
+      pendingEncounterMembers=additions.map(x=>({...structuredClone(x),id:undefined,hp:x.maxHp,conditions:[]}));
+      const roster=pendingEncounterMembers.map(member=>`<span class="roster-member ${member.kind==='pc'?'pc':'monster'}">${esc(member.name)}</span>`).join('');
+      showDialog('Preparation','Save new encounter',`<label class="field">ENCOUNTER NAME<input id="newEncounterName" placeholder="Ambush at the old bridge" autofocus></label><div class="roster-preview">${roster}</div>`,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmCreateEncounterBtn" class="button primary">Save encounter</button>');
+      return;
+    }
+    state.combat.combatants.push(...additions);sortCombatants();state.combat.turn=0;state.combat.selectedId=state.combat.combatants[0]?.id;save();closeDialog();renderCombat();toast(additions.length+' combatant'+(additions.length===1?'':'s')+' added');
   }
   function renderMonsters() {
     const q=$('#monsterSearch').value.trim().toLowerCase(), cr=$('#monsterCrFilter').value;
@@ -488,6 +498,13 @@
 
   function saveActiveEncounter() { if(!state.combat.combatants.length)return toast('Add combatants before saving');const current=state.combat.name==='Untitled battle'?'':state.combat.name;showDialog('Preparation',state.combat.editingEncounterId?'Update encounter':'Save encounter',`<label class="field">ENCOUNTER NAME<input id="saveEncounterName" value="${esc(current)}" placeholder="Ambush at the old bridge" autofocus></label>`,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmSaveEncounterBtn" class="button primary">Save encounter</button>'); }
   function commitActiveEncounter() { const name=$('#saveEncounterName').value.trim();if(!name)return toast('Give the encounter a name');state.combat.name=name;const members=state.combat.combatants.map(x=>({...structuredClone(x),id:undefined,hp:x.maxHp,conditions:[]}));let encounter=state.encounters.find(x=>x.id===state.combat.editingEncounterId)||state.encounters.find(x=>x.name.toLowerCase()===name.toLowerCase());if(encounter){encounter.name=name;encounter.members=members;encounter.updated=Date.now();}else{encounter={id:uid(),name,members,updated:Date.now()};state.encounters.push(encounter);}state.combat.editingEncounterId=encounter.id;save();closeDialog();renderCombat();renderEncounters();exportEncounter(encounter);toast('Encounter saved and exported'); }
+  function commitPreparedEncounter() {
+    const name=$('#newEncounterName')?.value.trim();
+    if(!name)return toast('Give the encounter a name');
+    if(state.encounters.some(encounter=>encounter.name.toLowerCase()===name.toLowerCase()))return toast('An encounter with that name already exists');
+    const encounter={id:uid(),name,members:structuredClone(pendingEncounterMembers),updated:Date.now()};
+    state.encounters.push(encounter);pendingEncounterMembers=[];save();closeDialog();renderEncounters();toast(`${name} saved without changing active combat`);
+  }
   function editEncounter(id) { const encounter=state.encounters.find(x=>x.id===id);if(!encounter)return;if(state.combat.combatants.length&&!confirm('Replace the current combat with this encounter for editing?'))return;state.combat={name:encounter.name,round:1,turn:0,selectedId:null,editingEncounterId:encounter.id,combatants:encounter.members.map((member,index)=>({...structuredClone(member),id:uid(),hp:member.maxHp,conditions:[],added:Date.now()+index}))};sortCombatants();state.combat.selectedId=state.combat.combatants[0]?.id;save();renderCombat();switchView('combat');toast(`Editing ${encounter.name} — use Save encounter when finished`); }
   function startEncounter(id) { const e=state.encounters.find(x=>x.id===id); if(!e)return; if(state.combat.combatants.length&&!confirm('Replace the current combat?'))return; state.combat={name:e.name,round:1,turn:0,selectedId:null,combatants:e.members.map((m,i)=>({...structuredClone(m),id:uid(),hp:m.maxHp,initiative:m.kind==='monster'?rollMonsterInitiative(m):m.initiative,conditions:[],added:Date.now()+i}))};sortCombatants();state.combat.selectedId=state.combat.combatants[0]?.id;save();renderCombat();switchView('combat'); }
 
@@ -516,6 +533,7 @@
     const tab=e.target.closest('[data-picker-tab]'); if(tab){rememberVisibleCombatPickerSelections();return renderPicker(tab.dataset.pickerTab);}
     if(e.target.id==='confirmAddBtn')return confirmAdd();
     if(e.target.id==='confirmSaveEncounterBtn')return commitActiveEncounter();
+    if(e.target.id==='confirmCreateEncounterBtn')return commitPreparedEncounter();
     if(e.target.id==='saveMonsterBtn')return saveMonster();
     if(e.target.id==='restoreMonsterBtn')return restoreMonsterDefault();
     if(e.target.id==='confirmDeleteMonsterBtn')return deleteMonsterFromBestiary();
@@ -564,7 +582,7 @@
     if(e.target.id==='prevTurnBtn'){if(!state.combat.combatants.length)return;if(state.combat.turn===0){state.combat.turn=state.combat.combatants.length-1;state.combat.round=Math.max(1,state.combat.round-1);}else state.combat.turn--;state.combat.selectedId=state.combat.combatants[state.combat.turn].id;save();renderCombat();return;}
     if(e.target.id==='clearCombatBtn'){if(confirm('End this combat and clear its current HP and conditions?')){state.combat={name:'Untitled battle',round:1,turn:0,combatants:[],selectedId:null};save();renderCombat();}return;}
     if(e.target.id==='saveActiveBtn')return saveActiveEncounter();
-    if(e.target.id==='newEncounterBtn'){switchView('combat');return openAddCombatant();}
+    if(e.target.id==='newEncounterBtn')return openAddCombatant('encounter');
     if(e.target.id==='newPartyBtn')return openPartyEditor();
     const deleteSavedParty=e.target.closest('[data-delete-party]');if(deleteSavedParty)return openDeleteParty(deleteSavedParty.dataset.deleteParty);
     const ep=e.target.closest('[data-edit-party]');if(ep)return openPartyEditor(ep.dataset.editParty);
@@ -583,7 +601,7 @@
     if(e.target.id==='saveCombatantBtn')return saveCombatantChanges();
     if(e.target.id==='removeCombatantBtn'){const id=$('#appDialog').dataset.combatantId;state.combat.combatants=state.combat.combatants.filter(x=>x.id!==id);state.combat.turn=0;save();closeDialog();renderCombat();return;}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='customDieSides'){e.preventDefault();saveCustomDie();return;}if(e.key==='Enter'&&e.target.matches('#diceCountInput,#diceModifierInput')){e.preventDefault();rollDiceFromControls();return;}if(e.key==='Enter'&&e.target.id==='saveEncounterName'){e.preventDefault();commitActiveEncounter();return;}if(e.key==='Enter'&&e.target.matches('[data-init-input],[data-pc-hp-input]'))e.target.blur();});
+  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='customDieSides'){e.preventDefault();saveCustomDie();return;}if(e.key==='Enter'&&e.target.matches('#diceCountInput,#diceModifierInput')){e.preventDefault();rollDiceFromControls();return;}if(e.key==='Enter'&&e.target.id==='saveEncounterName'){e.preventDefault();commitActiveEncounter();return;}if(e.key==='Enter'&&e.target.id==='newEncounterName'){e.preventDefault();commitPreparedEncounter();return;}if(e.key==='Enter'&&e.target.matches('[data-init-input],[data-pc-hp-input]'))e.target.blur();});
   document.addEventListener('change',e=>{
     if(e.target.matches('#pickerContent input[data-pick-kind],#pickerContent [data-init-for]')){rememberVisibleCombatPickerSelections();return;}
     if(e.target.matches('[data-spell-filter]')){const set=spellFilters[e.target.dataset.spellFilter];if(e.target.checked)set.add(e.target.value);else set.delete(e.target.value);renderSpells(false);return;}
