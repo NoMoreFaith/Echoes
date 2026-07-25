@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Example Creature",
+    "source_url": "",
+    "size": "Medium",
+    "type": "fiend",
+    "subtype": "demon",
+    "alignment": "chaotic evil",
+    "armor_class": 15,
+    "initiative_modifier": 4,
+    "initiative_score": 14,
+    "hit_points": 100,
+    "hit_dice": "12d8 + 48",
+    "speed": "30 ft., climb 30 ft.",
+    "strength": 15,
+    "dexterity": 19,
+    "constitution": 18,
+    "intelligence": 13,
+    "wisdom": 15,
+    "charisma": 17,
+    "strength_save": null,
+    "dexterity_save": 8,
+    "constitution_save": null,
+    "intelligence_save": 5,
+    "wisdom_save": 6,
+    "charisma_save": 7,
+    "skills": {
+      "deception": 11,
+      "insight": 6
+    },
+    "damage_vulnerabilities": "",
+    "damage_resistances": "cold, fire, lightning",
+    "damage_immunities": "poison",
+    "condition_immunities": "poisoned",
+    "senses": "darkvision 120 ft., passive Perception 12",
+    "languages": "Abyssal, Elvish, Undercommon",
+    "challenge_rating": "10",
+    "experience_points": 5900,
+    "proficiency_bonus": 4,
+    "special_abilities": [
+      {
+        "name": "Example Trait",
+        "desc": "Describe the creature's trait here."
+      }
+    ],
+    "actions": [
+      {
+        "name": "Example Attack",
+        "desc": "Melee Attack Roll: +8, reach 10 ft. Hit: 25 (6d6 + 4) damage."
+      }
+    ],
+    "bonus_actions": [
+      {
+        "name": "Example Bonus Action",
+        "desc": "Describe the bonus action here."
+      }
+    ],
+    "reactions": [
+      {
+        "name": "Example Reaction",
+        "desc": "Trigger: The creature is hit. Response: Describe the reaction here."
+      }
+    ],
+    "legendary_actions": []
+  }
+]

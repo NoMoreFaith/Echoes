@@ -1,9 +1,9 @@
-const CACHE_NAME = 'echoes-app-v21';
+const CACHE_NAME = 'echoes-app-v23';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=21',
-  './app.js?v=21',
+  './styles.css?v=23',
+  './app.js?v=23',
   './npcs.js?v=21',
   './library-core.js?v=21',
   './library-storage.js?v=21',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './spells.js',
   './manifest.webmanifest',
   './HELP.md',
+  './monster-template.json',
   './assets/Echoes.png',
   './assets/icon-192.png',
   './assets/icon-512.png',

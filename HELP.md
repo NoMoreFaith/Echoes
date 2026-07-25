@@ -74,7 +74,8 @@ Use **Export all data** for additional dated snapshots. **Import full backup** r
 - **Edit** changes that Bestiary entry. Built-in monsters retain their original values and can be restored with **Restore default**.
 - **Edit as New** duplicates a monster and leaves the original unchanged.
 - The far-right × deletes a Bestiary entry after a Yes/No confirmation. Existing encounter and combat copies remain intact.
-- **Import JSON** accepts monster data based on the standard repository structure used by Echoes.
+- **Import JSON** accepts both older SRD monster files and the richer structure shown in [`monster-template.json`](monster-template.json).
+- Rich monster entries can include all six abilities and saves, initiative score/modifier, HP formula, skills, vulnerabilities, resistances, damage and condition immunities, languages, XP, proficiency bonus, traits, actions, bonus actions, reactions, and legendary actions.
 
 
 ## NPC Collection

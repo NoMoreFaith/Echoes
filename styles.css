@@ -513,3 +513,39 @@ dialog.npc-dialog { width: min(1120px,calc(100vw - 36px)); }
 }
 
 .npc-profile-other-locations { color: var(--dim); margin: 5px 0; font-size: 11px; }
+
+.monster-form-section { border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.monster-form-section h3 { color: var(--gold); font: 700 11px "DM Sans", sans-serif; letter-spacing: .12em; margin: 0 0 3px; text-transform: uppercase; }
+.monster-form-section > p { color: var(--muted); font-size: 11px; margin: 0 0 12px; }
+.monster-ability-editor { display: grid; gap: 6px; }
+.monster-ability-row { display: grid; grid-template-columns: 44px minmax(90px,1fr) 105px minmax(90px,1fr); gap: 8px; align-items: end; }
+.monster-ability-row > strong { align-self: center; color: var(--ink); font-family: Eczar,serif; }
+.monster-ability-row label { display: grid; gap: 3px; color: var(--dim); font-size: 9px; letter-spacing: .1em; }
+.monster-ability-row input { min-width: 0; }
+.ability-modifier { align-self: center; color: var(--muted); font-size: 11px; font-weight: 700; text-align: center; }
+.ability-score-strip small { display: block; color: var(--muted); font-size: 9px; line-height: 1.35; margin-top: 3px; }
+.monster-core-stats { grid-template-columns: repeat(4,1fr); }
+@media (max-width: 700px) { .monster-ability-row { grid-template-columns: 40px 1fr 1fr; } .monster-ability-row .ability-modifier { grid-column: 2/-1; grid-row: 2; text-align: left; } .ability-score-strip { grid-template-columns: repeat(3,1fr); } }
+
+.detail-panel .ability-score-strip { grid-template-columns: repeat(3,1fr); }
+
+.combat-log-panel { position: relative; flex: 1 1 420px; min-width: 260px; margin-left: 14px; }
+.combat-log-panel > summary { min-height: 46px; display: grid; grid-template-columns: auto minmax(0,1fr) 28px; align-items: center; gap: 12px; padding: 7px 10px 7px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; list-style: none; }
+.combat-log-panel > summary::-webkit-details-marker { display: none; }
+.combat-log-panel > summary:hover { border-color: #554b42; background: var(--panel-2); }
+.combat-log-title, .combat-log-head span { color: var(--gold); font-size: 9px; font-weight: 800; letter-spacing: .13em; white-space: nowrap; }
+.combat-log-latest { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; gap: 12px; }
+.combat-log-latest strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.combat-log-latest small { color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.combat-log-chevron { color: var(--gold); font-size: 23px; line-height: 1; text-align: center; transition: transform .16s ease; }
+.combat-log-panel[open] .combat-log-chevron { transform: rotate(180deg); }
+.combat-log-dropdown { position: absolute; z-index: 15; top: calc(100% + 7px); left: 0; right: 0; padding: 14px; border: 1px solid #574a3d; border-radius: 9px; background: #151311; box-shadow: 0 18px 45px #000b; }
+.combat-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.combat-log-head > div { display: grid; gap: 2px; }
+.combat-log-head strong { font-size: 12px; }
+.combat-log-head .button { padding: 6px 9px; font-size: 10px; }
+.combat-log-entries { display: grid; gap: 6px; max-height: min(360px,calc(100vh - 270px)); overflow: auto; margin-top: 10px; padding-right: 3px; }
+.combat-log-entries .dice-log-entry { background: var(--panel); }
+.combat-log-empty { display: grid; min-height: 90px; place-items: center; padding: 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--dim); font-size: 12px; text-align: center; }
+@media (max-width: 1100px) { .combat-toolbar { padding-inline: 22px; } .combat-log-panel { margin-left: 4px; } .combat-log-latest { display: grid; } .combat-log-latest small { overflow: hidden; text-overflow: ellipsis; } }
+@media print { .combat-log-panel { display: none !important; } }

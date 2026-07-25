@@ -1,0 +1,13 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const html = fs.readFileSync('index.html','utf8');
+const app = fs.readFileSync('app.js','utf8');
+assert.match(html,/id="combatLogPanel"/);
+assert.match(html,/id="combatLogLatestRoll"/);
+assert.match(html,/id="combatLogEntries"/);
+assert.match(html,/id="clearCombatLogBtn"/);
+assert.match(app,/function renderCombatLog()/);
+assert.match(app,/diceLogEntriesMarkup/);
+assert.match(app,/#clearDiceLogBtn,#clearCombatLogBtn/);
+assert.match(app,/renderCombatLog()/);
+console.log('Echoes combat log tests passed');

@@ -3,6 +3,9 @@
   const STORAGE_KEY = 'echoes-v1';
   const LEGACY_STORAGE_KEY = 'rollkeeper-v1';
   const CONDITIONS = ['Banished','Blinded','Charmed','Deafened','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Poisoned','Prone','Restrained','Stunned','Unconscious','Concentration'];
+  const ABILITIES = ['strength','dexterity','constitution','intelligence','wisdom','charisma'];
+  const SKILL_LABELS = {acrobatics:'Acrobatics',animalhandling:'Animal Handling',arcana:'Arcana',athletics:'Athletics',deception:'Deception',history:'History',insight:'Insight',intimidation:'Intimidation',investigation:'Investigation',medicine:'Medicine',nature:'Nature',perception:'Perception',performance:'Performance',persuasion:'Persuasion',religion:'Religion',sleightofhand:'Sleight of Hand',stealth:'Stealth',survival:'Survival'};
+  const CR_EXPERIENCE = {'0':10,'1/8':25,'1/4':50,'1/2':100,'1':200,'2':450,'3':700,'4':1100,'5':1800,'6':2300,'7':2900,'8':3900,'9':5000,'10':5900,'11':7200,'12':8400,'13':10000,'14':11500,'15':13000,'16':15000,'17':18000,'18':20000,'19':22000,'20':25000,'21':33000,'22':41000,'23':50000,'24':62000,'25':75000,'26':90000,'27':105000,'28':120000,'29':135000,'30':155000};
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
   const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -57,9 +60,66 @@
   function rollMonsterInitiative(monster) { return rollDie(20)+num(monster?.initiative_modifier,initiativeModifierFromDex(monster?.dexterity)); }
   function monsterKey(m) { return `${m.name}|${m.challenge_rating}|${m.hit_points}`.toLowerCase(); }
   function monsterBaseline(m) { const {id,original,...baseline}=m;return structuredClone(baseline); }
+  function optionalNumber(value) {
+    return value===undefined||value===null||String(value).trim()===''?null:num(value,0);
+  }
+  function abilityModifier(score) { return Math.floor((num(score,10)-10)/2); }
+  function proficiencyBonusFromCR(challengeRating) {
+    const cr=String(challengeRating??'0').includes('/')?String(challengeRating).split('/').reduce((a,b)=>num(a)/num(b)):num(challengeRating,0);
+    if(cr>=29)return 9;if(cr>=25)return 8;if(cr>=21)return 7;if(cr>=17)return 6;if(cr>=13)return 5;if(cr>=9)return 4;if(cr>=5)return 3;return 2;
+  }
+  function experienceFromCR(challengeRating) { return CR_EXPERIENCE[String(challengeRating??'')]??0; }
+  function skillKey(value='') { return String(value).toLowerCase().replace(/[^a-z]/g,''); }
+  function normaliseSkills(monster={}) {
+    const result={},raw=monster.skills;
+    const add=(name,value)=>{const key=skillKey(name);if(SKILL_LABELS[key]&&optionalNumber(value)!==null)result[key]=num(value,0);};
+    if(Array.isArray(raw))raw.forEach(item=>add(item?.name,item?.bonus??item?.value));
+    else if(raw&&typeof raw==='object')Object.entries(raw).forEach(([name,value])=>add(name,value));
+    else if(typeof raw==='string')raw.split(/[,;\n]/).forEach(part=>{const match=part.trim().match(/^(.+?)\s*\|?\s*([+-]?\d+)$/);if(match)add(match[1],match[2]);});
+    Object.keys(SKILL_LABELS).forEach(key=>{if(optionalNumber(monster[key])!==null)add(key,monster[key]);});
+    return result;
+  }
   function normaliseMonster(m) {
-    const dexterity=num(m.dexterity ?? m.dex,10),initiativeModifier=num(m.initiative_modifier ?? m.initiative_bonus,initiativeModifierFromDex(dexterity));
-    const normalized={ ...m, id:m.id||uid(), name:m.name||'Unnamed creature', type:m.type||'creature', size:m.size||'', alignment:m.alignment||'', armor_class:num(m.armor_class ?? m.ac,10), hit_points:num(m.hit_points ?? m.hp,1), dexterity, initiative_modifier:initiativeModifier, challenge_rating:String(m.challenge_rating ?? m.cr ?? '—'), special_abilities:Array.isArray(m.special_abilities)?m.special_abilities:[], actions:Array.isArray(m.actions)?m.actions:[], legendary_actions:Array.isArray(m.legendary_actions)?m.legendary_actions:[] };
+    const challengeRating=String(m.challenge_rating??m.cr??'—');
+    const dexterity=num(m.dexterity??m.dex,10),initiativeModifier=num(m.initiative_modifier??m.initiative_bonus,initiativeModifierFromDex(dexterity));
+    const normalized={
+      ...m,
+      id:m.id||uid(),
+      name:m.name||'Unnamed creature',
+      size:m.size||'',
+      type:m.type||'creature',
+      subtype:m.subtype||'',
+      alignment:m.alignment||'',
+      source_url:m.source_url??m.sourceUrl??'',
+      armor_class:num(m.armor_class??m.ac,10),
+      hit_points:num(m.hit_points??m.hp,1),
+      hit_dice:String(m.hit_dice??m.hit_points_roll??''),
+      challenge_rating:challengeRating,
+      experience_points:num(m.experience_points??m.xp,experienceFromCR(challengeRating)),
+      proficiency_bonus:num(m.proficiency_bonus??m.pb,proficiencyBonusFromCR(challengeRating)),
+      initiative_modifier:initiativeModifier,
+      initiative_score:num(m.initiative_score,10+initiativeModifier),
+      strength:num(m.strength??m.str,10),
+      dexterity,
+      constitution:num(m.constitution??m.con,10),
+      intelligence:num(m.intelligence??m.int,10),
+      wisdom:num(m.wisdom??m.wis,10),
+      charisma:num(m.charisma??m.cha,10),
+      skills:normaliseSkills(m),
+      speed:m.speed||'',
+      senses:m.senses||'',
+      languages:m.languages||'',
+      damage_vulnerabilities:m.damage_vulnerabilities??m.vulnerabilities??'',
+      damage_resistances:m.damage_resistances??m.resistances??'',
+      damage_immunities:m.damage_immunities??m.immunities??'',
+      condition_immunities:m.condition_immunities??'',
+      special_abilities:Array.isArray(m.special_abilities)?m.special_abilities:Array.isArray(m.traits)?m.traits:[],
+      actions:Array.isArray(m.actions)?m.actions:[],
+      bonus_actions:Array.isArray(m.bonus_actions)?m.bonus_actions:Array.isArray(m.bonusActions)?m.bonusActions:[],
+      reactions:Array.isArray(m.reactions)?m.reactions:[],
+      legendary_actions:Array.isArray(m.legendary_actions)?m.legendary_actions:[]
+    };
+    ABILITIES.forEach(key=>{normalized[`${key}_save`]=optionalNumber(m[`${key}_save`]??m.saves?.[key]);});
     if(!normalized.original){const bundled=Array.isArray(window.SRD_MONSTERS)?window.SRD_MONSTERS.find(x=>String(x.name).toLowerCase()===String(normalized.name).toLowerCase()):null;normalized.original=monsterBaseline(bundled||normalized);}
     return normalized;
   }
@@ -141,6 +201,20 @@
     return rollDiceExpression(`${count}d${sides}${modifier>=0?'+':''}${modifier}`,'Dice roller');
   }
 
+  function diceLogEntriesMarkup(emptyMessage) {
+    return state.diceLog.length?state.diceLog.map(entry=>`<article class="dice-log-entry"><div class="dice-log-source"><strong>${esc(entry.source||'Dice roller')}</strong><time>${new Date(entry.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time></div><div class="dice-log-breakdown"><strong>${esc(entry.expression)}</strong><br>${esc(diceBreakdown(entry))}</div><div class="dice-log-total">${entry.total}</div></article>`).join(''):`<div class="dice-log-empty">${esc(emptyMessage)}</div>`;
+  }
+  function renderCombatLog() {
+    const latest=state.diceLog[0],source=$('#combatLogLatestSource'),roll=$('#combatLogLatestRoll'),count=$('#combatLogCount'),entries=$('#combatLogEntries');
+    if(source)source.textContent=latest?latest.source||'Dice roller':'No rolls yet';
+    if(roll)roll.textContent=latest?`${latest.expression} → ${latest.total}`:'Click damage dice in a statblock to roll';
+    if(count)count.textContent=`${state.diceLog.length} roll${state.diceLog.length===1?'':'s'}`;
+    if(entries)entries.innerHTML=diceLogEntriesMarkup('Rolls made from statblocks or the Dice Roller will appear here.');
+  }
+  function clearDiceHistory() {
+    if(!state.diceLog.length)return;
+    if(confirm('Clear the complete dice roll log?')){state.diceLog=[];save();renderDiceRoller();toast('Dice log cleared');}
+  }
   function renderDiceRoller() {
     state.dice={...defaults.dice,...(state.dice||{})};state.diceLog=Array.isArray(state.diceLog)?state.diceLog:[];
     const countInput=$('#diceCountInput'),modifierInput=$('#diceModifierInput');
@@ -151,7 +225,8 @@
     const latest=state.diceLog[0],result=$('#diceResult');
     if(result)result.innerHTML=latest?`<span>LAST ROLL · ${esc(latest.expression)}</span><strong>${latest.total}</strong><p>${esc(diceBreakdown(latest))} · ${esc(latest.source||'Dice roller')}</p>`:'<span>LAST ROLL</span><strong>—</strong><p>Select a die and roll when ready.</p>';
     if($('#diceLogCount'))$('#diceLogCount').textContent=`${state.diceLog.length} roll${state.diceLog.length===1?'':'s'}`;
-    if($('#diceLog'))$('#diceLog').innerHTML=state.diceLog.length?state.diceLog.map(entry=>`<article class="dice-log-entry"><div class="dice-log-source"><strong>${esc(entry.source||'Dice roller')}</strong><time>${new Date(entry.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time></div><div class="dice-log-breakdown"><strong>${esc(entry.expression)}</strong><br>${esc(diceBreakdown(entry))}</div><div class="dice-log-total">${entry.total}</div></article>`).join(''):'<div class="dice-log-empty">Rolls made here or from a statblock will appear in this log.</div>';
+    if($('#diceLog'))$('#diceLog').innerHTML=diceLogEntriesMarkup('Rolls made here or from a statblock will appear in this log.');
+    renderCombatLog();
   }
 
   function switchView(name) {
@@ -194,23 +269,41 @@
   }
 
   function renderDetails() {
-    const x=state.combat.combatants.find(y=>y.id===state.combat.selectedId), panel=$('#detailContent');
-    if (!x) { panel.innerHTML='<div class="detail-empty">Select a combatant to see details.</div>'; return; }
-    const stat=(label,val)=>`<div><span>${label}</span><strong>${val ?? '—'}</strong></div>`;
-    const details=x.kind==='monster' ? `<details class="detail-section"><summary>Traits</summary><div class="detail-section-body">${abilities(x.special_abilities,'No special traits.')}</div></details><details class="detail-section" open><summary>Actions</summary><div class="detail-section-body">${abilities(x.actions,'No actions recorded.')}</div></details>${x.legendary_actions?.length?`<details class="detail-section"><summary>Legendary actions</summary><div class="detail-section-body">${abilities(x.legendary_actions)}</div></details>`:''}` : `<details class="detail-section" open><summary>Character</summary><div class="detail-section-body"><div class="ability-static"><strong>${esc(x.className||'Class not set')}</strong><p>Played by ${esc(x.player||'—')}</p></div></div></details>`;
-    panel.innerHTML=`<div class="detail-head"><div><p class="eyebrow">${x.kind==='pc'?'PLAYER CHARACTER':'CREATURE'}</p><h2>${esc(combatDisplayName(x))}</h2><div class="type">${esc([x.size,x.type,x.alignment].filter(Boolean).join(' · '))}</div></div>${x.kind==='monster'?`<span class="cr-badge">CR ${esc(x.challenge_rating)}</span>`:''}</div>
+    const x=state.combat.combatants.find(y=>y.id===state.combat.selectedId),panel=$('#detailContent');
+    if(!x){panel.innerHTML='<div class="detail-empty">Select a combatant to see details.</div>';return;}
+    const stat=(label,val)=>`<div><span>${label}</span><strong>${val??'—'}</strong></div>`;
+    const details=x.kind==='monster'
+      ? `${abilityScoreSection(x)}${monsterFactSections(x)}${monsterActionSections(x,true)}`
+      : `<details class="detail-section" open><summary>Character</summary><div class="detail-section-body"><div class="ability-static"><strong>${esc(x.className||'Class not set')}</strong><p>Played by ${esc(x.player||'—')}</p></div></div></details>`;
+    panel.innerHTML=`<div class="detail-head"><div><p class="eyebrow">${x.kind==='pc'?'PLAYER CHARACTER':'CREATURE'}</p><h2>${esc(combatDisplayName(x))}</h2><div class="type">${esc(monsterTypeLine(x))}</div></div>${x.kind==='monster'?`<span class="cr-badge">CR ${esc(x.challenge_rating)}</span>`:''}</div>
       <div class="stat-strip">${stat('AC',x.ac)}${stat('HP',`${x.hp}/${x.maxHp}`)}${stat('INIT',x.initiative)}</div>
       <details class="detail-section" open><summary>Conditions</summary><div class="detail-section-body"><div class="condition-row">${(x.conditions||[]).map(c=>`<button class="condition" data-remove-condition="${esc(c)}">${esc(c)} ×</button>`).join('')||'<span class="type">None</span>'}</div><button class="button ghost" id="addConditionBtn" style="margin-top:10px">＋ Add condition</button></div></details>
-      ${x.senses||x.speed?`<details class="detail-section"><summary>Movement & senses</summary><div class="detail-section-body">${x.speed?`<div class="ability-static"><strong>Speed</strong><p>${esc(x.speed)}</p></div>`:''}${x.senses?`<div class="ability-static"><strong>Senses</strong><p>${esc(x.senses)}</p></div>`:''}</div></details>`:''}${details}`;
+      ${details}`;
   }
-  function abilities(list=[], empty='') { return list.length ? list.map(a=>`<details class="ability"><summary>${esc(a.name)}</summary><p>${richDescription(a.desc)}</p></details>`).join('') : `<p class="subtitle">${empty}</p>`; }
-
+  function abilities(list=[],empty='') { return list.length?list.map(a=>`<details class="ability"><summary>${esc(a.name)}</summary><p>${richDescription(a.desc)}</p></details>`).join(''):`<p class="subtitle">${empty}</p>`; }
+  function monsterTypeLine(m) { return [m.size,m.type,m.subtype?`(${m.subtype})`:'',m.alignment].filter(Boolean).join(' · '); }
+  function abilityScoreMarkup(m) {
+    return ABILITIES.map(key=>{const score=num(m[key],10),modifier=abilityModifier(score),save=optionalNumber(m[`${key}_save`])??modifier;return `<div><span>${key.slice(0,3).toUpperCase()}</span><strong>${score}</strong><small>MOD ${formatModifier(modifier)} · SAVE ${formatModifier(save)}</small></div>`;}).join('');
+  }
+  function abilityScoreSection(m) { return `<details class="detail-section"><summary>Abilities & saves</summary><div class="detail-section-body"><div class="stat-strip ability-score-strip">${abilityScoreMarkup(m)}</div></div></details>`; }
+  function skillSummary(m) {
+    return Object.entries(m.skills||{}).map(([key,value])=>`${SKILL_LABELS[key]||key} ${formatModifier(value)}`).join(', ');
+  }
+  function factRows(rows) {
+    return rows.filter(([,value])=>value!==undefined&&value!==null&&String(value).trim()!=='').map(([label,value])=>`<div class="ability-static"><strong>${esc(label)}</strong><p>${esc(value)}</p></div>`).join('');
+  }
+  function monsterFactSections(m) {
+    const movement=factRows([['Speed',m.speed],['Senses',m.senses]]);
+    const defences=factRows([['Skills',skillSummary(m)],['Damage vulnerabilities',m.damage_vulnerabilities],['Damage resistances',m.damage_resistances],['Damage immunities',m.damage_immunities],['Condition immunities',m.condition_immunities],['Languages',m.languages]]);
+    return `${movement?`<details class="detail-section"><summary>Movement & senses</summary><div class="detail-section-body">${movement}</div></details>`:''}${defences?`<details class="detail-section"><summary>Skills, defences & languages</summary><div class="detail-section-body">${defences}</div></details>`:''}`;
+  }
+  function monsterActionSections(m,openActions=false) {
+    return `<details class="detail-section"><summary>Traits</summary><div class="detail-section-body">${abilities(m.special_abilities,'No special traits.')}</div></details><details class="detail-section" ${openActions?'open':''}><summary>Actions</summary><div class="detail-section-body">${abilities(m.actions,'No actions recorded.')}</div></details>${m.bonus_actions?.length?`<details class="detail-section"><summary>Bonus actions</summary><div class="detail-section-body">${abilities(m.bonus_actions)}</div></details>`:''}${m.reactions?.length?`<details class="detail-section"><summary>Reactions</summary><div class="detail-section-body">${abilities(m.reactions)}</div></details>`:''}${m.legendary_actions?.length?`<details class="detail-section"><summary>Legendary actions</summary><div class="detail-section-body">${abilities(m.legendary_actions)}</div></details>`:''}`;
+  }
   function showMonsterPreview(m) {
     if(!m)return;
-    const stat=(label,val)=>`<div><span>${label}</span><strong>${val ?? '—'}</strong></div>`;
-    const abilityScores=['strength','dexterity','constitution','intelligence','wisdom','charisma'].map(key=>stat(key.slice(0,3).toUpperCase(),m[key])).join('');
-    const movement=m.speed||m.senses?`<details class="detail-section" open><summary>Movement & senses</summary><div class="detail-section-body">${m.speed?`<div class="ability-static"><strong>Speed</strong><p>${esc(m.speed)}</p></div>`:''}${m.senses?`<div class="ability-static"><strong>Senses</strong><p>${esc(m.senses)}</p></div>`:''}</div></details>`:'';
-    showDialog('Bestiary preview',m.name,`<div class="monster-preview"><div class="detail-head"><div><p class="eyebrow">CREATURE</p><h2>${esc(m.name)}</h2><div class="type">${esc([m.size,m.type,m.alignment].filter(Boolean).join(' · '))}</div></div><span class="cr-badge">CR ${esc(m.challenge_rating)}</span></div><div class="stat-strip monster-core-stats">${stat('AC',m.armor_class)}${stat('HP',m.hit_points)}${stat('CR',m.challenge_rating)}${stat('INIT',formatModifier(m.initiative_modifier))}</div><div class="stat-strip ability-score-strip">${abilityScores}</div>${movement}<details class="detail-section" open><summary>Traits</summary><div class="detail-section-body">${abilities(m.special_abilities,'No special traits.')}</div></details><details class="detail-section" open><summary>Actions</summary><div class="detail-section-body">${abilities(m.actions,'No actions recorded.')}</div></details>${m.legendary_actions?.length?`<details class="detail-section"><summary>Legendary actions</summary><div class="detail-section-body">${abilities(m.legendary_actions)}</div></details>`:''}</div>`,'<button value="cancel" class="button primary">Close</button>');
+    const stat=(label,val)=>`<div><span>${label}</span><strong>${val??'—'}</strong></div>`,xp=m.experience_points?`${num(m.experience_points).toLocaleString('en-GB')} XP`:'—';
+    showDialog('Bestiary preview',m.name,`<div class="monster-preview"><div class="detail-head"><div><p class="eyebrow">CREATURE</p><h2>${esc(m.name)}</h2><div class="type">${esc(monsterTypeLine(m))}</div></div><span class="cr-badge">CR ${esc(m.challenge_rating)} · ${esc(xp)}</span></div><div class="stat-strip monster-core-stats">${stat('AC',m.armor_class)}${stat('HP',m.hit_dice?`${m.hit_points} (${m.hit_dice})`:m.hit_points)}${stat('INIT',`${formatModifier(m.initiative_modifier)} (${m.initiative_score})`)}${stat('PB',formatModifier(m.proficiency_bonus))}</div><div class="stat-strip ability-score-strip">${abilityScoreMarkup(m)}</div>${monsterFactSections(m)}${monsterActionSections(m,true)}</div>`,'<button value="cancel" class="button primary">Close</button>');
   }
 
   function showDialog(eyebrow,title,body,footer='') {
@@ -294,10 +387,43 @@
   }
 
   function monsterForm(m={}) {
-    return `<div class="form-grid"><label class="field full">NAME<input id="mName" value="${esc(m.name||'')}"></label><label class="field">SIZE<input id="mSize" value="${esc(m.size||'Medium')}"></label><label class="field">TYPE<input id="mType" value="${esc(m.type||'creature')}"></label><label class="field full">ALIGNMENT<input id="mAlignment" value="${esc(m.alignment||'')}"></label><label class="field">CHALLENGE RATING<input id="mCr" value="${esc(m.challenge_rating||'1')}"></label><label class="field">ARMOR CLASS<input id="mAc" type="number" value="${m.armor_class||10}"></label><label class="field">HIT POINTS<input id="mHp" type="number" value="${m.hit_points||10}"></label><label class="field">DEXTERITY<input id="mDex" type="number" value="${m.dexterity||10}"></label><label class="field">INITIATIVE MODIFIER<input id="mInitiativeModifier" type="number" value="${num(m.initiative_modifier,initiativeModifierFromDex(m.dexterity||10))}"></label><label class="field full">SPEED<input id="mSpeed" value="${esc(m.speed||'30 ft.')}"></label><label class="field full">SENSES<input id="mSenses" value="${esc(m.senses||'')}"></label><label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="mActions" rows="7">${esc((m.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">SPECIAL ABILITIES <small>One per line: Name | Description</small><textarea id="mAbilities" rows="6">${esc((m.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="mLegendary" rows="6">${esc((m.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label></div>`;
+    const abilityRows=ABILITIES.map(key=>{const label=key.slice(0,3).toUpperCase(),score=num(m[key],10),save=optionalNumber(m[`${key}_save`]);return `<div class="monster-ability-row"><strong>${label}</strong><label>SCORE<input id="m${key[0].toUpperCase()+key.slice(1)}" data-ability-score="${key}" type="number" value="${score}"></label><span class="ability-modifier" data-ability-modifier="${key}">MOD ${formatModifier(abilityModifier(score))}</span><label>SAVE<input id="m${key[0].toUpperCase()+key.slice(1)}Save" type="number" placeholder="${formatModifier(abilityModifier(score))}" value="${save??''}"></label></div>`;}).join('');
+    const skillText=Object.entries(m.skills||{}).map(([key,value])=>`${SKILL_LABELS[key]||key} | ${formatModifier(value)}`).join('\n');
+    return `<div class="form-grid monster-form">
+      <label class="field full">NAME<input id="mName" value="${esc(m.name||'')}"></label>
+      <label class="field">SIZE<input id="mSize" value="${esc(m.size||'Medium')}"></label><label class="field">TYPE<input id="mType" value="${esc(m.type||'creature')}"></label>
+      <label class="field">SUBTYPE<input id="mSubtype" value="${esc(m.subtype||'')}"></label><label class="field">ALIGNMENT<input id="mAlignment" value="${esc(m.alignment||'')}"></label>
+      <label class="field">CHALLENGE RATING<input id="mCr" value="${esc(m.challenge_rating||'1')}"></label><label class="field">EXPERIENCE POINTS<input id="mXp" type="number" min="0" value="${num(m.experience_points,experienceFromCR(m.challenge_rating||'1'))}"></label>
+      <label class="field">PROFICIENCY BONUS<input id="mPb" type="number" value="${num(m.proficiency_bonus,proficiencyBonusFromCR(m.challenge_rating||'1'))}"></label><label class="field">ARMOR CLASS<input id="mAc" type="number" value="${m.armor_class||10}"></label>
+      <label class="field">HIT POINTS<input id="mHp" type="number" value="${m.hit_points||10}"></label><label class="field">HIT DICE / HP FORMULA<input id="mHitDice" value="${esc(m.hit_dice||'')}"></label>
+      <label class="field">INITIATIVE MODIFIER<input id="mInitiativeModifier" type="number" value="${num(m.initiative_modifier,initiativeModifierFromDex(m.dexterity||10))}"></label><label class="field">INITIATIVE SCORE<input id="mInitiativeScore" type="number" value="${num(m.initiative_score,10+num(m.initiative_modifier,initiativeModifierFromDex(m.dexterity||10)))}"></label>
+      <div class="monster-form-section full"><h3>Abilities & saving throws</h3><p>Leave a save blank to use the normal ability modifier.</p><div class="monster-ability-editor">${abilityRows}</div></div>
+      <label class="field full">SKILLS <small>One per line: Skill | Bonus</small><textarea id="mSkills" rows="5">${esc(skillText)}</textarea></label>
+      <label class="field full">SPEED<input id="mSpeed" value="${esc(m.speed||'30 ft.')}"></label><label class="field full">SENSES<input id="mSenses" value="${esc(m.senses||'')}"></label>
+      <label class="field full">LANGUAGES<input id="mLanguages" value="${esc(m.languages||'')}"></label>
+      <label class="field full">DAMAGE VULNERABILITIES<input id="mDamageVulnerabilities" value="${esc(m.damage_vulnerabilities||'')}"></label><label class="field full">DAMAGE RESISTANCES<input id="mDamageResistances" value="${esc(m.damage_resistances||'')}"></label>
+      <label class="field full">DAMAGE IMMUNITIES<input id="mDamageImmunities" value="${esc(m.damage_immunities||'')}"></label><label class="field full">CONDITION IMMUNITIES<input id="mConditionImmunities" value="${esc(m.condition_immunities||'')}"></label>
+      <label class="field full">TRAITS <small>One per line: Name | Description</small><textarea id="mAbilities" rows="6">${esc((m.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>
+      <label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="mActions" rows="7">${esc((m.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>
+      <label class="field full">BONUS ACTIONS <small>One per line: Name | Description</small><textarea id="mBonusActions" rows="5">${esc((m.bonus_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>
+      <label class="field full">REACTIONS <small>One per line: Name | Description</small><textarea id="mReactions" rows="5">${esc((m.reactions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>
+      <label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="mLegendary" rows="6">${esc((m.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>
+      <label class="field full">SOURCE URL<input id="mSourceUrl" type="url" value="${esc(m.source_url||'')}"></label>
+    </div>`;
   }
   function parseAbilities(text) { return text.split('\n').filter(x=>x.trim()).map(line=>{const [name,...desc]=line.split('|');return {name:name.trim(),desc:desc.join('|').trim()};}); }
-  function saveMonster() { const name=$('#mName').value.trim();if(!name)return toast('Give the monster a name');const editId=$('#appDialog').dataset.editMonsterId,cloneId=$('#appDialog').dataset.cloneMonsterId,idx=state.monsters.findIndex(x=>x.id===editId),cloneIdx=state.monsters.findIndex(x=>x.id===cloneId),base=idx>=0?state.monsters[idx]:cloneIdx>=0?state.monsters[cloneIdx]:{};const draft={...base,id:editId||uid(),name,size:$('#mSize').value,type:$('#mType').value,alignment:$('#mAlignment').value,challenge_rating:$('#mCr').value,armor_class:$('#mAc').value,hit_points:$('#mHp').value,dexterity:$('#mDex').value,initiative_modifier:$('#mInitiativeModifier').value,speed:$('#mSpeed').value,senses:$('#mSenses').value,actions:parseAbilities($('#mActions').value),special_abilities:parseAbilities($('#mAbilities').value),legendary_actions:parseAbilities($('#mLegendary').value)};if(!editId){delete draft.original;draft.original=monsterBaseline(draft);}const monster=normaliseMonster(draft);if(idx>=0)state.monsters[idx]=monster;else state.monsters.push(monster);state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;delete $('#appDialog').dataset.cloneMonsterId;save();closeDialog();renderMonsters();toast(`${name} ${idx>=0?'updated':'added to the bestiary'}`); }
+  function parseSkillBonuses(text) {
+    const skills={};
+    String(text||'').split('\n').filter(line=>line.trim()).forEach(line=>{const [name,...bonusParts]=line.split('|'),key=skillKey(name),bonus=optionalNumber(bonusParts.join('|').trim());if(SKILL_LABELS[key]&&bonus!==null)skills[key]=bonus;});
+    return skills;
+  }
+  function saveMonster() {
+    const name=$('#mName').value.trim();if(!name)return toast('Give the monster a name');
+    const editId=$('#appDialog').dataset.editMonsterId,cloneId=$('#appDialog').dataset.cloneMonsterId,idx=state.monsters.findIndex(x=>x.id===editId),cloneIdx=state.monsters.findIndex(x=>x.id===cloneId),base=idx>=0?state.monsters[idx]:cloneIdx>=0?state.monsters[cloneIdx]:{};
+    const abilityFields={};ABILITIES.forEach(key=>{const title=key[0].toUpperCase()+key.slice(1);abilityFields[key]=$(`#m${title}`).value;abilityFields[`${key}_save`]=$(`#m${title}Save`).value;});
+    const draft={...base,...abilityFields,id:editId||uid(),name,size:$('#mSize').value,type:$('#mType').value,subtype:$('#mSubtype').value,alignment:$('#mAlignment').value,source_url:$('#mSourceUrl').value,challenge_rating:$('#mCr').value,experience_points:$('#mXp').value,proficiency_bonus:$('#mPb').value,armor_class:$('#mAc').value,hit_points:$('#mHp').value,hit_dice:$('#mHitDice').value,initiative_modifier:$('#mInitiativeModifier').value,initiative_score:$('#mInitiativeScore').value,skills:parseSkillBonuses($('#mSkills').value),speed:$('#mSpeed').value,senses:$('#mSenses').value,languages:$('#mLanguages').value,damage_vulnerabilities:$('#mDamageVulnerabilities').value,damage_resistances:$('#mDamageResistances').value,damage_immunities:$('#mDamageImmunities').value,condition_immunities:$('#mConditionImmunities').value,actions:parseAbilities($('#mActions').value),special_abilities:parseAbilities($('#mAbilities').value),bonus_actions:parseAbilities($('#mBonusActions').value),reactions:parseAbilities($('#mReactions').value),legendary_actions:parseAbilities($('#mLegendary').value)};
+    if(!editId){delete draft.original;draft.original=monsterBaseline(draft);}const monster=normaliseMonster(draft);if(idx>=0)state.monsters[idx]=monster;else state.monsters.push(monster);state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;delete $('#appDialog').dataset.cloneMonsterId;save();closeDialog();renderMonsters();toast(`${name} ${idx>=0?'updated':'added to the bestiary'}`);
+  }
   function deleteMonsterFromBestiary() { const id=$('#appDialog').dataset.deleteMonsterId,monster=state.monsters.find(x=>x.id===id);if(!monster)return;state.monsters=state.monsters.filter(x=>x.id!==id);delete $('#appDialog').dataset.deleteMonsterId;save();closeDialog();renderMonsters();toast(`${monster.name} removed from the Bestiary`); }
   function restoreMonsterDefault() { const id=$('#appDialog').dataset.editMonsterId,idx=state.monsters.findIndex(x=>x.id===id);if(idx<0)return;const current=state.monsters[idx],baseline=structuredClone(current.original||monsterBaseline(current));state.monsters[idx]=normaliseMonster({...baseline,id:current.id,original:baseline});state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;save();closeDialog();renderMonsters();toast(`${baseline.name||current.name} restored to default`); }
 
@@ -367,8 +493,19 @@
 
   function changeHp(id,delta) { const x=state.combat.combatants.find(y=>y.id===id); if(!x)return;x.hp=Math.max(0,Math.min(x.maxHp,x.hp+delta));state.combat.selectedId=id;save();renderCombat(); }
   function removeCombatant(id) { const x=state.combat.combatants.find(y=>y.id===id); if(!x)return;const displayName=combatDisplayName(x);state.combat.combatants=state.combat.combatants.filter(y=>y.id!==id);state.combat.turn=Math.min(state.combat.turn,Math.max(0,state.combat.combatants.length-1));state.combat.selectedId=state.combat.combatants[state.combat.turn]?.id||null;save();renderCombat();toast(`${displayName} removed from combat`); }
-  function rowMenu(id) { const x=state.combat.combatants.find(y=>y.id===id);const monsterFields=x.kind==='monster'?`<label class="field full">INSTANCE NAME<input id="editName" value="${esc(x.name)}"></label><label class="field full">SPEED<input id="editSpeed" value="${esc(x.speed||'')}"></label><label class="field full">SENSES<input id="editSenses" value="${esc(x.senses||'')}"></label><label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="editActions" rows="6">${esc((x.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">SPECIAL ABILITIES <small>One per line: Name | Description</small><textarea id="editAbilities" rows="5">${esc((x.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="editLegendary" rows="5">${esc((x.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>`:'';const saveCustom=x.kind==='monster'?'<button type="button" id="saveCombatMonsterBtn" class="button ghost">Save to Bestiary</button>':'';showDialog('Combatant options',combatDisplayName(x),`<div class="form-grid">${monsterFields}<label class="field">CURRENT HP<input id="editHp" type="number" value="${x.hp}"></label><label class="field">MAX HP<input id="editMaxHp" type="number" value="${x.maxHp}"></label><label class="field">ARMOR CLASS<input id="editAc" type="number" value="${x.ac}"></label><label class="field">INITIATIVE<input id="editInit" type="number" value="${x.initiative}"></label></div>`,saveCustom+'<button type="button" id="removeCombatantBtn" class="button danger-ghost">Remove</button><button value="cancel" class="button ghost">Cancel</button><button type="button" id="saveCombatantBtn" class="button primary">Save changes</button>');$('#appDialog').dataset.combatantId=id; }
-  function saveCombatantChanges(closeAfter=true) { const x=state.combat.combatants.find(y=>y.id===$('#appDialog').dataset.combatantId);if(!x)return;const currentId=state.combat.combatants[state.combat.turn]?.id;x.hp=num($('#editHp').value,x.hp);x.maxHp=Math.max(1,num($('#editMaxHp').value,x.maxHp));x.hp=Math.max(0,Math.min(x.maxHp,x.hp));x.ac=num($('#editAc').value,x.ac);x.initiative=num($('#editInit').value,x.initiative);if(x.kind==='monster'&&$('#editName')){x.name=$('#editName').value.trim()||x.name;x.speed=$('#editSpeed').value;x.senses=$('#editSenses').value;x.actions=parseAbilities($('#editActions').value);x.special_abilities=parseAbilities($('#editAbilities').value);x.legendary_actions=parseAbilities($('#editLegendary').value);}sortCombatants();state.combat.turn=Math.max(0,state.combat.combatants.findIndex(y=>y.id===currentId));state.combat.selectedId=x.id;save();if(closeAfter){closeDialog();renderCombat();}return x; }
+  function rowMenu(id) {
+    const x=state.combat.combatants.find(y=>y.id===id);
+    const monsterFields=x.kind==='monster'?`<label class="field full">INSTANCE NAME<input id="editName" value="${esc(x.name)}"></label><label class="field full">SPEED<input id="editSpeed" value="${esc(x.speed||'')}"></label><label class="field full">SENSES<input id="editSenses" value="${esc(x.senses||'')}"></label><label class="field full">TRAITS <small>One per line: Name | Description</small><textarea id="editAbilities" rows="5">${esc((x.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="editActions" rows="6">${esc((x.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">BONUS ACTIONS <small>One per line: Name | Description</small><textarea id="editBonusActions" rows="4">${esc((x.bonus_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">REACTIONS <small>One per line: Name | Description</small><textarea id="editReactions" rows="4">${esc((x.reactions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="editLegendary" rows="5">${esc((x.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>`:'';
+    const saveCustom=x.kind==='monster'?'<button type="button" id="saveCombatMonsterBtn" class="button ghost">Save to Bestiary</button>':'';
+    showDialog('Combatant options',combatDisplayName(x),`<div class="form-grid">${monsterFields}<label class="field">CURRENT HP<input id="editHp" type="number" value="${x.hp}"></label><label class="field">MAX HP<input id="editMaxHp" type="number" value="${x.maxHp}"></label><label class="field">ARMOR CLASS<input id="editAc" type="number" value="${x.ac}"></label><label class="field">INITIATIVE<input id="editInit" type="number" value="${x.initiative}"></label></div>`,saveCustom+'<button type="button" id="removeCombatantBtn" class="button danger-ghost">Remove</button><button value="cancel" class="button ghost">Cancel</button><button type="button" id="saveCombatantBtn" class="button primary">Save changes</button>');
+    $('#appDialog').dataset.combatantId=id;
+  }
+  function saveCombatantChanges(closeAfter=true) {
+    const x=state.combat.combatants.find(y=>y.id===$('#appDialog').dataset.combatantId);if(!x)return;const currentId=state.combat.combatants[state.combat.turn]?.id;
+    x.hp=num($('#editHp').value,x.hp);x.maxHp=Math.max(1,num($('#editMaxHp').value,x.maxHp));x.hp=Math.max(0,Math.min(x.maxHp,x.hp));x.ac=num($('#editAc').value,x.ac);x.initiative=num($('#editInit').value,x.initiative);
+    if(x.kind==='monster'&&$('#editName')){x.name=$('#editName').value.trim()||x.name;x.speed=$('#editSpeed').value;x.senses=$('#editSenses').value;x.special_abilities=parseAbilities($('#editAbilities').value);x.actions=parseAbilities($('#editActions').value);x.bonus_actions=parseAbilities($('#editBonusActions').value);x.reactions=parseAbilities($('#editReactions').value);x.legendary_actions=parseAbilities($('#editLegendary').value);}
+    sortCombatants();state.combat.turn=Math.max(0,state.combat.combatants.findIndex(y=>y.id===currentId));state.combat.selectedId=x.id;save();if(closeAfter){closeDialog();renderCombat();}return x;
+  }
   function saveCombatMonsterToBestiary() { const x=saveCombatantChanges(false);if(!x||x.kind!=='monster')return;const {id,sourceId,kind,hp,maxHp,ac,initiative,conditions,added,original,...base}=x,draft={...base,id:uid(),armor_class:ac,hit_points:maxHp};draft.original=monsterBaseline(draft);state.monsters.push(normaliseMonster(draft));state.monsters.sort((a,b)=>a.name.localeCompare(b.name));save();closeDialog();renderCombat();renderMonsters();toast(`${x.name} saved to the Bestiary`); }
 
   function handleDialogClick(e) {
@@ -400,7 +537,7 @@
     const dieButton=e.target.closest('[data-die-size]');if(dieButton){state.dice={...defaults.dice,...state.dice,sides:num(dieButton.dataset.dieSize,20)};save();renderDiceRoller();return;}
     const diceStep=e.target.closest('[data-dice-step]');if(diceStep){const isCount=diceStep.dataset.diceStep==='count',input=$(isCount?'#diceCountInput':'#diceModifierInput'),minimum=isCount?1:-999,maximum=isCount?100:999,value=Math.max(minimum,Math.min(maximum,num(input.value,isCount?1:0)+num(diceStep.dataset.delta)));input.value=value;state.dice={...defaults.dice,...state.dice,[isCount?'count':'modifier']:value};save();updateDiceExpressionPreview();return;}
     if(e.target.id==='rollDiceBtn')return rollDiceFromControls();
-    if(e.target.id==='clearDiceLogBtn'){if(state.diceLog.length&&confirm('Clear the complete dice roll log?')){state.diceLog=[];save();renderDiceRoller();toast('Dice log cleared');}return;}
+    if(e.target.closest('#clearDiceLogBtn,#clearCombatLogBtn'))return clearDiceHistory();
     const diceLink=e.target.closest('[data-dice-expression]');if(diceLink)return rollDiceExpression(diceLink.dataset.diceExpression,diceSourceForElement(diceLink));
     const nav=e.target.closest('[data-view]'); if(nav)return switchView(nav.dataset.view);
     const go=e.target.closest('[data-go]'); if(go)return switchView(go.dataset.go);
@@ -454,7 +591,7 @@
     if(e.target.matches('[data-pc-hp-input]')){const id=e.target.dataset.pcHpInput,x=state.combat.combatants.find(y=>y.id===id);if(!x)return;x.hp=Math.max(0,Math.min(x.maxHp,num(e.target.value,x.hp)));state.combat.selectedId=id;save();renderCombat();}
     if(e.target.matches('[data-hp-slider]'))renderCombat();
   });
-  document.addEventListener('input',e=>{if(e.target.id==='mDex'&&$('#mInitiativeModifier'))$('#mInitiativeModifier').value=initiativeModifierFromDex(e.target.value);if(e.target.matches('#diceCountInput,#diceModifierInput'))updateDiceExpressionPreview();if(e.target.id==='encounterSearch')renderEncounters();if(e.target.id==='monsterSearch'){monsterPage=0;renderMonsters();}if(e.target.id==='pickerSearch')renderMonsterPicker(e.target.value);if(e.target.id==='spellSearch')renderSpells();if(e.target.matches('[data-hp-slider]')){const id=e.target.dataset.hpSlider,x=state.combat.combatants.find(y=>y.id===id);if(!x)return;x.hp=Math.max(0,Math.min(x.maxHp,num(e.target.value,x.hp)));state.combat.selectedId=id;const row=e.target.closest('.combatant'),pct=Math.max(0,Math.min(100,x.hp/x.maxHp*100)),bloodied=x.kind==='monster'&&x.hp>0&&x.hp<=x.maxHp/2;row.classList.toggle('bloodied',bloodied);row.classList.toggle('defeated',x.hp<=0);row.querySelector('[data-hp-value]').textContent=x.hp;save();}});
+  document.addEventListener('input',e=>{if(e.target.matches('[data-ability-score]')){const key=e.target.dataset.abilityScore,modifier=abilityModifier(e.target.value),output=$('[data-ability-modifier="'+key+'"]');if(output)output.textContent='MOD '+formatModifier(modifier);if(key==='dexterity'&&$('#mInitiativeModifier')){$('#mInitiativeModifier').value=modifier;$('#mInitiativeScore').value=10+modifier;}}if(e.target.id==='mInitiativeModifier'&&$('#mInitiativeScore'))$('#mInitiativeScore').value=10+num(e.target.value,0);if(e.target.matches('#diceCountInput,#diceModifierInput'))updateDiceExpressionPreview();if(e.target.id==='encounterSearch')renderEncounters();if(e.target.id==='monsterSearch'){monsterPage=0;renderMonsters();}if(e.target.id==='pickerSearch')renderMonsterPicker(e.target.value);if(e.target.id==='spellSearch')renderSpells();if(e.target.matches('[data-hp-slider]')){const id=e.target.dataset.hpSlider,x=state.combat.combatants.find(y=>y.id===id);if(!x)return;x.hp=Math.max(0,Math.min(x.maxHp,num(e.target.value,x.hp)));state.combat.selectedId=id;const row=e.target.closest('.combatant'),pct=Math.max(0,Math.min(100,x.hp/x.maxHp*100)),bloodied=x.kind==='monster'&&x.hp>0&&x.hp<=x.maxHp/2;row.classList.toggle('bloodied',bloodied);row.classList.toggle('defeated',x.hp<=0);row.querySelector('[data-hp-value]').textContent=x.hp;save();}});
   $('#monsterCrFilter').addEventListener('change',renderMonsters);
   $('#spellLevelFilter').addEventListener('change',renderSpells);
   $('#monsterFile').addEventListener('change',e=>{if(e.target.files[0])importMonsters(e.target.files[0]);e.target.value='';});
