@@ -400,9 +400,6 @@ dialog::backdrop { background: rgba(4,3,2,.78); backdrop-filter: blur(3px); }
   .dice-log { max-height: 520px; }
 }
 
-.dice-nav-icon { width: 23px !important; height: 23px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 4px; font-size: 9px; font-weight: 900; line-height: 1; text-transform: lowercase; }
-.sidebar-collapsed .dice-nav-icon { width: 23px !important; }
-
 
 .npc-collection-controls { border-bottom: 1px solid var(--line); }
 .npc-search-row { border-bottom: 0; padding-bottom: 10px; }
