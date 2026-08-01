@@ -41,6 +41,8 @@
   let combatPickerSelections=new Map();
   let combatPickerTarget='combat';
   let pendingEncounterMembers=[];
+  let pendingEncounterId=null;
+  let pendingEncounterName='';
   const spellFilters={school:new Set(),casting:new Set(),classes:new Set()};
   let toastTimer;
 
@@ -313,11 +315,42 @@
   }
   function closeDialog() { $('#appDialog').close(); }
 
+  function pendingPcAlreadyAdded(member) {
+    return pendingEncounterMembers.some(x=>x.kind==='pc'&&(x.sourceId===member.id||(String(x.name).toLowerCase()===String(member.name).toLowerCase()&&String(x.player||'').toLowerCase()===String(member.player||'').toLowerCase())));
+  }
+  function pendingEncounterDisplayName(member,index) {
+    if(member.kind!=='monster')return member.name;
+    const key=member.sourceId||String(member.name).toLowerCase(),peers=pendingEncounterMembers.filter(item=>item.kind==='monster'&&(item.sourceId||String(item.name).toLowerCase())===key);
+    if(peers.length<2)return member.name;
+    return `${member.name} ${pendingEncounterMembers.slice(0,index+1).filter(item=>item.kind==='monster'&&(item.sourceId||String(item.name).toLowerCase())===key).length}`;
+  }
+  function pendingEncounterMeta(member) {
+    if(member.kind==='pc')return [member.className||'Player character',member.player,`AC ${member.ac}`,`HP ${member.maxHp??member.hp}`].filter(Boolean).join(' · ');
+    return [[member.size,member.type].filter(Boolean).join(' '),member.challenge_rating?`CR ${member.challenge_rating}`:'',`AC ${member.ac??member.armor_class}`,`HP ${member.maxHp??member.hit_points??member.hp}`].filter(Boolean).join(' · ');
+  }
+  function syncPendingEncounterInitiatives() {
+    $$('#appDialog [data-pending-initiative]').forEach(input=>{const index=num(input.dataset.pendingInitiative,-1);if(pendingEncounterMembers[index])pendingEncounterMembers[index].initiative=num(input.value,pendingEncounterMembers[index].initiative);});
+  }
+  function renderEncounterBuilder() {
+    const currentName=$('#encounterBuilderName');if(currentName)pendingEncounterName=currentName.value;
+    const roster=pendingEncounterMembers.length?pendingEncounterMembers.map((member,index)=>`<article class="encounter-builder-member ${member.kind==='pc'?'pc':'monster'}"><div><strong>${esc(pendingEncounterDisplayName(member,index))}</strong><small>${esc(pendingEncounterMeta(member))}</small></div><label>INITIATIVE<input data-pending-initiative="${index}" type="number" value="${num(member.initiative,10)}"></label><button type="button" data-remove-pending-member="${index}" aria-label="Remove ${esc(pendingEncounterDisplayName(member,index))}">×</button></article>`).join(''):'<div class="encounter-builder-empty">No combatants added yet.</div>';
+    showDialog('Preparation',pendingEncounterId?'Edit encounter':'Create encounter',`<div class="encounter-builder"><label class="field full">ENCOUNTER NAME<input id="encounterBuilderName" value="${esc(pendingEncounterName)}" placeholder="Ambush at the old bridge" autofocus></label><div class="encounter-builder-heading"><div><span>COMBATANTS</span><strong>${pendingEncounterMembers.length}</strong></div><button type="button" id="encounterBuilderAddBtn" class="button ghost">＋ Add combatants</button></div><div class="encounter-builder-roster">${roster}</div></div>`,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmCreateEncounterBtn" class="button primary">Save encounter</button>');
+  }
+  function openEncounterBuilder(id=null) {
+    const encounter=id?state.encounters.find(item=>item.id===id):null;if(id&&!encounter)return;
+    pendingEncounterId=encounter?.id||null;pendingEncounterName=encounter?.name||'';pendingEncounterMembers=encounter?structuredClone(encounter.members):[];
+    renderEncounterBuilder();
+  }
+  function removePendingEncounterMember(index) {
+    syncPendingEncounterInitiatives();pendingEncounterMembers.splice(index,1);renderEncounterBuilder();
+  }
   function openAddCombatant(target='combat') {
     combatPickerTarget=target;
     combatPickerSelections=new Map();
+    const encounterTarget=target==='encounter-builder';
     const body=`<div class="tab-row"><button type="button" class="tab-button active" data-picker-tab="party">Party</button><button type="button" class="tab-button" data-picker-tab="monster">Monsters</button><button type="button" class="tab-button" data-picker-tab="quick">Quick add</button></div><div id="pickerContent"></div>`;
-    showDialog(target==='encounter'?'Preparation':'Combat setup',target==='encounter'?'Build new encounter':'Add combatants',body,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmAddBtn" class="button primary">Add selected</button>');
+    const back=encounterTarget?'<button type="button" id="returnToEncounterBuilderBtn" class="button ghost">Back</button>':'<button value="cancel" class="button ghost">Cancel</button>';
+    showDialog(encounterTarget?'Preparation':'Combat setup',encounterTarget?'Add combatants to encounter':'Add combatants',body,back+'<button type="button" id="confirmAddBtn" class="button primary">Add selected</button>');
     renderPicker('party');
   }
   function pickerSelectionKey(kind,id) { return kind+':'+id; }
@@ -335,7 +368,7 @@
     $$('.tab-button').forEach(b=>b.classList.toggle('active',b.dataset.pickerTab===tab));
     const out=$('#pickerContent');
     if(tab==='party') {
-      out.innerHTML=state.parties.length?state.parties.map(p=>`<div class="detail-section"><h3>${esc(p.name)}</h3><div class="picker-list">${p.members.map(m=>{const already=combatPickerTarget==='combat'&&pcAlreadyInCombat(m);return pickerItem('pc',m.id,m.name,`${m.className||'PC'} · AC ${m.ac} · HP ${m.hp}${already?' · Already in combat':''}`,already);}).join('')}</div></div>`).join(''):'<div class="empty-collection">Create a party first.</div>';
+      out.innerHTML=state.parties.length?state.parties.map(p=>`<div class="detail-section"><h3>${esc(p.name)}</h3><div class="picker-list">${p.members.map(m=>{const already=combatPickerTarget==='combat'?pcAlreadyInCombat(m):combatPickerTarget==='encounter-builder'&&pendingPcAlreadyAdded(m),status=already?(combatPickerTarget==='combat'?' · Already in combat':' · Already in encounter'):'';return pickerItem('pc',m.id,m.name,`${m.className||'PC'} · AC ${m.ac} · HP ${m.hp}${status}`,already);}).join('')}</div></div>`).join(''):'<div class="empty-collection">Create a party first.</div>';
     } else if(tab==='monster') {
       out.innerHTML=`<label class="field full">SEARCH BESTIARY<input id="pickerSearch" placeholder="Monster name…"></label><div id="monsterPickerList" class="picker-list" style="margin-top:12px"></div>`; renderMonsterPicker('');
     } else {
@@ -371,10 +404,9 @@
     });
     if(!additions.length)return toast('Select at least one combatant');
     combatPickerSelections.clear();
-    if(combatPickerTarget==='encounter') {
-      pendingEncounterMembers=additions.map(x=>({...structuredClone(x),id:undefined,hp:x.maxHp,conditions:[]}));
-      const roster=pendingEncounterMembers.map(member=>`<span class="roster-member ${member.kind==='pc'?'pc':'monster'}">${esc(member.name)}</span>`).join('');
-      showDialog('Preparation','Save new encounter',`<label class="field">ENCOUNTER NAME<input id="newEncounterName" placeholder="Ambush at the old bridge" autofocus></label><div class="roster-preview">${roster}</div>`,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmCreateEncounterBtn" class="button primary">Save encounter</button>');
+    if(combatPickerTarget==='encounter-builder') {
+      pendingEncounterMembers.push(...additions.map(x=>({...structuredClone(x),id:undefined,hp:x.maxHp,conditions:[]})));
+      renderEncounterBuilder();
       return;
     }
     state.combat.combatants.push(...additions);sortCombatants();state.combat.turn=0;state.combat.selectedId=state.combat.combatants[0]?.id;save();closeDialog();renderCombat();toast(additions.length+' combatant'+(additions.length===1?'':'s')+' added');
@@ -499,13 +531,18 @@
   function saveActiveEncounter() { if(!state.combat.combatants.length)return toast('Add combatants before saving');const current=state.combat.name==='Untitled battle'?'':state.combat.name;showDialog('Preparation',state.combat.editingEncounterId?'Update encounter':'Save encounter',`<label class="field">ENCOUNTER NAME<input id="saveEncounterName" value="${esc(current)}" placeholder="Ambush at the old bridge" autofocus></label>`,'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmSaveEncounterBtn" class="button primary">Save encounter</button>'); }
   function commitActiveEncounter() { const name=$('#saveEncounterName').value.trim();if(!name)return toast('Give the encounter a name');state.combat.name=name;const members=state.combat.combatants.map(x=>({...structuredClone(x),id:undefined,hp:x.maxHp,conditions:[]}));let encounter=state.encounters.find(x=>x.id===state.combat.editingEncounterId)||state.encounters.find(x=>x.name.toLowerCase()===name.toLowerCase());if(encounter){encounter.name=name;encounter.members=members;encounter.updated=Date.now();}else{encounter={id:uid(),name,members,updated:Date.now()};state.encounters.push(encounter);}state.combat.editingEncounterId=encounter.id;save();closeDialog();renderCombat();renderEncounters();exportEncounter(encounter);toast('Encounter saved and exported'); }
   function commitPreparedEncounter() {
-    const name=$('#newEncounterName')?.value.trim();
+    const name=$('#encounterBuilderName')?.value.trim();
     if(!name)return toast('Give the encounter a name');
-    if(state.encounters.some(encounter=>encounter.name.toLowerCase()===name.toLowerCase()))return toast('An encounter with that name already exists');
-    const encounter={id:uid(),name,members:structuredClone(pendingEncounterMembers),updated:Date.now()};
-    state.encounters.push(encounter);pendingEncounterMembers=[];save();closeDialog();renderEncounters();toast(`${name} saved without changing active combat`);
+    if(!pendingEncounterMembers.length)return toast('Add at least one combatant');
+    syncPendingEncounterInitiatives();
+    const duplicate=state.encounters.find(encounter=>encounter.id!==pendingEncounterId&&encounter.name.toLowerCase()===name.toLowerCase());if(duplicate)return toast('An encounter with that name already exists');
+    const members=pendingEncounterMembers.map(member=>({...structuredClone(member),id:undefined,hp:member.maxHp??member.hp,conditions:[]}));
+    let encounter=state.encounters.find(item=>item.id===pendingEncounterId),updated=Boolean(encounter);
+    if(encounter){encounter.name=name;encounter.members=members;encounter.updated=Date.now();}
+    else{encounter={id:uid(),name,members,updated:Date.now()};state.encounters.push(encounter);}
+    pendingEncounterId=null;pendingEncounterName='';pendingEncounterMembers=[];save();closeDialog();renderEncounters();toast(`${name} ${updated?'updated':'saved'} without changing active combat`);
   }
-  function editEncounter(id) { const encounter=state.encounters.find(x=>x.id===id);if(!encounter)return;if(state.combat.combatants.length&&!confirm('Replace the current combat with this encounter for editing?'))return;state.combat={name:encounter.name,round:1,turn:0,selectedId:null,editingEncounterId:encounter.id,combatants:encounter.members.map((member,index)=>({...structuredClone(member),id:uid(),hp:member.maxHp,conditions:[],added:Date.now()+index}))};sortCombatants();state.combat.selectedId=state.combat.combatants[0]?.id;save();renderCombat();switchView('combat');toast(`Editing ${encounter.name} — use Save encounter when finished`); }
+  function editEncounter(id) { openEncounterBuilder(id); }
   function startEncounter(id) { const e=state.encounters.find(x=>x.id===id); if(!e)return; if(state.combat.combatants.length&&!confirm('Replace the current combat?'))return; state.combat={name:e.name,round:1,turn:0,selectedId:null,combatants:e.members.map((m,i)=>({...structuredClone(m),id:uid(),hp:m.maxHp,initiative:m.kind==='monster'?rollMonsterInitiative(m):m.initiative,conditions:[],added:Date.now()+i}))};sortCombatants();state.combat.selectedId=state.combat.combatants[0]?.id;save();renderCombat();switchView('combat'); }
 
   function changeHp(id,delta) { const x=state.combat.combatants.find(y=>y.id===id); if(!x)return;x.hp=Math.max(0,Math.min(x.maxHp,x.hp+delta));state.combat.selectedId=id;save();renderCombat(); }
@@ -534,6 +571,9 @@
     if(e.target.id==='confirmAddBtn')return confirmAdd();
     if(e.target.id==='confirmSaveEncounterBtn')return commitActiveEncounter();
     if(e.target.id==='confirmCreateEncounterBtn')return commitPreparedEncounter();
+    if(e.target.id==='encounterBuilderAddBtn'){pendingEncounterName=$('#encounterBuilderName').value;syncPendingEncounterInitiatives();return openAddCombatant('encounter-builder');}
+    if(e.target.id==='returnToEncounterBuilderBtn')return renderEncounterBuilder();
+    const removePending=e.target.closest('[data-remove-pending-member]');if(removePending)return removePendingEncounterMember(num(removePending.dataset.removePendingMember));
     if(e.target.id==='saveMonsterBtn')return saveMonster();
     if(e.target.id==='restoreMonsterBtn')return restoreMonsterDefault();
     if(e.target.id==='confirmDeleteMonsterBtn')return deleteMonsterFromBestiary();
@@ -582,7 +622,7 @@
     if(e.target.id==='prevTurnBtn'){if(!state.combat.combatants.length)return;if(state.combat.turn===0){state.combat.turn=state.combat.combatants.length-1;state.combat.round=Math.max(1,state.combat.round-1);}else state.combat.turn--;state.combat.selectedId=state.combat.combatants[state.combat.turn].id;save();renderCombat();return;}
     if(e.target.id==='clearCombatBtn'){if(confirm('End this combat and clear its current HP and conditions?')){state.combat={name:'Untitled battle',round:1,turn:0,combatants:[],selectedId:null};save();renderCombat();}return;}
     if(e.target.id==='saveActiveBtn')return saveActiveEncounter();
-    if(e.target.id==='newEncounterBtn')return openAddCombatant('encounter');
+    if(e.target.id==='newEncounterBtn')return openEncounterBuilder();
     if(e.target.id==='newPartyBtn')return openPartyEditor();
     const deleteSavedParty=e.target.closest('[data-delete-party]');if(deleteSavedParty)return openDeleteParty(deleteSavedParty.dataset.deleteParty);
     const ep=e.target.closest('[data-edit-party]');if(ep)return openPartyEditor(ep.dataset.editParty);
@@ -601,7 +641,7 @@
     if(e.target.id==='saveCombatantBtn')return saveCombatantChanges();
     if(e.target.id==='removeCombatantBtn'){const id=$('#appDialog').dataset.combatantId;state.combat.combatants=state.combat.combatants.filter(x=>x.id!==id);state.combat.turn=0;save();closeDialog();renderCombat();return;}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='customDieSides'){e.preventDefault();saveCustomDie();return;}if(e.key==='Enter'&&e.target.matches('#diceCountInput,#diceModifierInput')){e.preventDefault();rollDiceFromControls();return;}if(e.key==='Enter'&&e.target.id==='saveEncounterName'){e.preventDefault();commitActiveEncounter();return;}if(e.key==='Enter'&&e.target.id==='newEncounterName'){e.preventDefault();commitPreparedEncounter();return;}if(e.key==='Enter'&&e.target.matches('[data-init-input],[data-pc-hp-input]'))e.target.blur();});
+  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='customDieSides'){e.preventDefault();saveCustomDie();return;}if(e.key==='Enter'&&e.target.matches('#diceCountInput,#diceModifierInput')){e.preventDefault();rollDiceFromControls();return;}if(e.key==='Enter'&&e.target.id==='saveEncounterName'){e.preventDefault();commitActiveEncounter();return;}if(e.key==='Enter'&&e.target.id==='encounterBuilderName'){e.preventDefault();commitPreparedEncounter();return;}if(e.key==='Enter'&&e.target.matches('[data-init-input],[data-pc-hp-input]'))e.target.blur();});
   document.addEventListener('change',e=>{
     if(e.target.matches('#pickerContent input[data-pick-kind],#pickerContent [data-init-for]')){rememberVisibleCombatPickerSelections();return;}
     if(e.target.matches('[data-spell-filter]')){const set=spellFilters[e.target.dataset.spellFilter];if(e.target.checked)set.add(e.target.value);else set.delete(e.target.value);renderSpells(false);return;}

@@ -2,7 +2,7 @@ const CACHE_NAME = 'echoes-app-v25';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=23',
+  './styles.css?v=24',
   './app.js?v=24',
   './npcs.js?v=21',
   './library-core.js?v=21',

@@ -549,3 +549,22 @@ dialog.npc-dialog { width: min(1120px,calc(100vw - 36px)); }
 .combat-log-empty { display: grid; min-height: 90px; place-items: center; padding: 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--dim); font-size: 12px; text-align: center; }
 @media (max-width: 1100px) { .combat-toolbar { padding-inline: 22px; } .combat-log-panel { margin-left: 4px; } .combat-log-latest { display: grid; } .combat-log-latest small { overflow: hidden; text-overflow: ellipsis; } }
 @media print { .combat-log-panel { display: none !important; } }
+
+.encounter-builder { min-width: min(680px,72vw); display: grid; gap: 16px; }
+.encounter-builder-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.encounter-builder-heading > div { display: flex; align-items: baseline; gap: 8px; }
+.encounter-builder-heading span { color: var(--dim); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.encounter-builder-heading strong { color: var(--gold); font: 700 22px Eczar,serif; }
+.encounter-builder-heading .button { padding: 8px 11px; font-size: 11px; }
+.encounter-builder-roster { display: grid; gap: 6px; max-height: min(440px,55vh); overflow: auto; padding-right: 3px; }
+.encounter-builder-member { min-height: 62px; display: grid; grid-template-columns: minmax(0,1fr) 90px 42px; align-items: center; gap: 12px; padding: 8px 0 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: #171412; overflow: hidden; }
+.encounter-builder-member > div { min-width: 0; display: grid; gap: 3px; }
+.encounter-builder-member > div strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Eczar,serif; font-size: 16px; }
+.encounter-builder-member.pc > div strong { color: var(--green); }
+.encounter-builder-member small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.encounter-builder-member label { display: grid; gap: 3px; color: var(--dim); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.encounter-builder-member input { width: 80px; padding: 7px 8px; }
+.encounter-builder-member > button { align-self: stretch; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--red); font-size: 20px; cursor: pointer; }
+.encounter-builder-member > button:hover { background: rgba(217,93,85,.12); }
+.encounter-builder-empty { padding: 42px 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; }
+@media (max-width:700px){.encounter-builder{min-width:0}.encounter-builder-member{grid-template-columns:minmax(0,1fr) 70px 38px}.encounter-builder-member input{width:62px}}

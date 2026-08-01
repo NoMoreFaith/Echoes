@@ -1,16 +1,15 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-
-const app = fs.readFileSync('app.js', 'utf8');
-
-assert.match(app, /function openAddCombatant\(target='combat'\)/);
-assert.match(app, /if\(combatPickerTarget==='encounter'\)/);
-assert.match(app, /function commitPreparedEncounter\(\)/);
-assert.match(app, /state\.encounters\.push\(encounter\);pendingEncounterMembers=\[\];save\(\)/);
-assert.match(app, /newEncounterBtn'\)return openAddCombatant\('encounter'\)/);
-assert.doesNotMatch(
-  app,
-  /newEncounterBtn'\)\{switchView\('combat'\);return openAddCombatant\(\);\}/
-);
-
+const app = fs.readFileSync('app.js','utf8');
+assert.ok(app.includes('function openEncounterBuilder(id=null)'));
+assert.ok(app.includes('function renderEncounterBuilder()'));
+assert.ok(app.includes('function editEncounter(id) { openEncounterBuilder(id); }'));
+assert.ok(app.includes("combatPickerTarget==='encounter-builder'"));
+assert.ok(app.includes('pendingEncounterMembers.push(...additions'));
+assert.ok(app.includes('data-remove-pending-member'));
+assert.ok(app.includes('encounter.members=members'));
+assert.ok(app.includes("newEncounterBtn')return openEncounterBuilder()"));
+assert.ok(!app.includes('Replace the current combat with this encounter for editing'));
+const editFunction = app.match(/function editEncounter\(id\)[^\n]*/)?.[0] || '';
+assert.ok(!editFunction.includes('state.combat'));
 console.log('Echoes isolated encounter builder tests passed');

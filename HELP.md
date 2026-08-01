@@ -59,7 +59,7 @@ Use **Export all data** for additional dated snapshots. **Import full backup** r
 ## Encounters
 
 - Build the combat roster, then select **Save encounter**.
-- Select **Edit** on a saved encounter to load its roster into Combat. Add, remove, or alter combatants, then use **Save encounter** to update the original encounter.
+- Select **Edit** on a saved encounter to reopen the encounter builder. Rename it, add or remove combatants, adjust initiative values, and save without changing active combat.
 - Give the encounter a name. Saving another encounter with the same name also updates it.
 - Saved encounters reset combatants to maximum HP and clear conditions when started.
 - Search encounters by encounter, monster, character, player, or class name.
