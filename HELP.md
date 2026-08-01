@@ -71,11 +71,13 @@ Use **Export all data** for additional dated snapshots. **Import full backup** r
 - Search by monster name or type and filter by challenge rating.
 - Select a monster row to preview its stats, senses, traits, actions, and legendary actions.
 - **+ Combat** adds a private copy to the active combat.
-- **Edit** changes that Bestiary entry. Built-in monsters retain their original values and can be restored with **Restore default**.
+- **Edit** changes that Bestiary entry. Editing a 5etools record promotes the edited copy to custom, protecting it from later source refreshes. **Restore default** returns it to the imported baseline.
 - **Edit as New** duplicates a monster and leaves the original unchanged.
 - The far-right × deletes a Bestiary entry after a Yes/No confirmation. Existing encounter and combat copies remain intact.
-- **Import JSON** accepts both older SRD monster files and the richer structure shown in [`monster-template.json`](monster-template.json).
-- Rich monster entries can include all six abilities and saves, initiative score/modifier, HP formula, skills, vulnerabilities, resistances, damage and condition immunities, languages, XP, proficiency bonus, traits, actions, bonus actions, reactions, and legendary actions.
+- **Import file** accepts Echoes/legacy monster JSON. **Import 5etools** accepts the 5etools Bestiary page or a specific 5etools data-file link, then lets you choose source books.
+- A refreshed source replaces only entries previously tagged as imported from that same 5etools source. Custom monsters, local file imports, and custom spell entries are always retained.
+- Echoes ships without a bundled monster or spell catalogue; imported records and custom additions live in your external `Echoes-library.json` and remain available offline.
+- Rich monster entries can include all six abilities and saves, initiative score/modifier, HP formula, skills, vulnerabilities, resistances, damage and condition immunities, languages, XP, proficiency bonus, legendary resistance count, traits, actions, bonus actions, reactions, and legendary actions.
 
 
 ## NPC Collection
@@ -95,7 +97,8 @@ Use **Export all data** for additional dated snapshots. **Import full backup** r
 - Search by spell name, school, class, or description.
 - Filter by spell level, school, casting time, and class.
 - Select any spell row to open its full description.
-- Create individual spells or import a spell JSON collection.
+- Create individual spells, import a spell JSON file, or use **Import 5etools** and select the source books you use.
+- Refreshing a 5etools spell source never removes custom spells or imports from other sources.
 - Spell names mentioned in monster descriptions become links when the spell exists in the library.
 - Difficulty classes written as 'DC' followed by a number are emphasized automatically.
 

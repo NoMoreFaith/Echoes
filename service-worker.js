@@ -1,14 +1,13 @@
-const CACHE_NAME = 'echoes-app-v25';
+const CACHE_NAME = 'echoes-app-v27';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=24',
-  './app.js?v=24',
+  './styles.css?v=26',
+  './five-tools-import.js?v=1',
+  './app.js?v=26',
   './npcs.js?v=21',
   './library-core.js?v=21',
   './library-storage.js?v=22',
-  './monsters.js',
-  './spells.js',
   './manifest.webmanifest',
   './HELP.md',
   './monster-template.json',

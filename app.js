@@ -6,6 +6,7 @@
   const ABILITIES = ['strength','dexterity','constitution','intelligence','wisdom','charisma'];
   const SKILL_LABELS = {acrobatics:'Acrobatics',animalhandling:'Animal Handling',arcana:'Arcana',athletics:'Athletics',deception:'Deception',history:'History',insight:'Insight',intimidation:'Intimidation',investigation:'Investigation',medicine:'Medicine',nature:'Nature',perception:'Perception',performance:'Performance',persuasion:'Persuasion',religion:'Religion',sleightofhand:'Sleight of Hand',stealth:'Stealth',survival:'Survival'};
   const CR_EXPERIENCE = {'0':10,'1/8':25,'1/4':50,'1/2':100,'1':200,'2':450,'3':700,'4':1100,'5':1800,'6':2300,'7':2900,'8':3900,'9':5000,'10':5900,'11':7200,'12':8400,'13':10000,'14':11500,'15':13000,'16':15000,'17':18000,'18':20000,'19':22000,'20':25000,'21':33000,'22':41000,'23':50000,'24':62000,'25':75000,'26':90000,'27':105000,'28':120000,'29':135000,'30':155000};
+  const FIVE_TOOLS = window.EchoesFiveTools;
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
   const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -13,8 +14,8 @@
   const num = (v, fallback=0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 
   const defaults = {
-    monsters: Array.isArray(window.SRD_MONSTERS) ? window.SRD_MONSTERS : [],
-    spells: Array.isArray(window.SRD_SPELLS) ? window.SRD_SPELLS : [],
+    monsters: [],
+    spells: [],
     parties: [{ id: uid(), name: 'The Adventurers', members: [
       {id:uid(), name:'Erdan', player:'', className:'', hp:35, ac:16},
       {id:uid(), name:'Solas', player:'', className:'', hp:42, ac:15},
@@ -44,9 +45,22 @@
   let pendingEncounterId=null;
   let pendingEncounterName='';
   const spellFilters={school:new Set(),casting:new Set(),classes:new Set()};
+  let fiveToolsImportPlan=[];
   let toastTimer;
 
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); window.dispatchEvent(new Event('echoes:data-saved')); }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch(error) { console.warn('Echoes browser working copy is too large; the external library remains authoritative.', error); }
+    window.dispatchEvent(new Event('echoes:data-saved'));
+  }
+  function replaceState(nextState) {
+    const incoming=nextState&&typeof nextState==='object'?nextState:{};
+    state={...structuredClone(defaults),...structuredClone(incoming),npcs:Array.isArray(incoming.npcs)?structuredClone(incoming.npcs):[],dice:{...defaults.dice,...structuredClone(incoming.dice||{})},diceLog:Array.isArray(incoming.diceLog)?structuredClone(incoming.diceLog):[],ui:{...defaults.ui,...structuredClone(incoming.ui||{})},combat:{...defaults.combat,...structuredClone(incoming.combat||{})}};
+    state.combat.combatants=(state.combat.combatants||[]).map(combatant=>({...combatant,conditions:(combatant.conditions||[]).map(condition=>condition==='Concentrating'?'Concentration':condition)}));
+    state.monsters=(state.monsters||[]).map(normaliseMonster);state.spells=(state.spells||[]).map(normaliseSpell);
+    save();applyUiState();renderCombat();renderParties();renderEncounters();renderMonsters();renderSpells();renderDiceRoller();window.EchoesNPCs?.render();
+  }
+
   function applyUiState() { const shell=$('.app-shell'),workspace=$('#combatWorkspace');shell.classList.toggle('sidebar-collapsed',state.ui.sidebarCollapsed);workspace.classList.toggle('detail-collapsed',state.ui.detailCollapsed);const left=$('#sidebarToggleBtn'),right=$('#detailToggleBtn');left.textContent=state.ui.sidebarCollapsed?'»':'«';left.setAttribute('aria-label',state.ui.sidebarCollapsed?'Expand navigation':'Collapse navigation');left.title=left.getAttribute('aria-label');right.textContent=state.ui.detailCollapsed?'«':'»';right.setAttribute('aria-label',state.ui.detailCollapsed?'Expand details':'Collapse details');right.title=right.getAttribute('aria-label'); }
   function toast(message) { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2200); }
   function sortCombatants() { state.combat.combatants.sort((a,b)=>b.initiative-a.initiative || b.dex-a.dex || a.added-b.added); }
@@ -63,6 +77,13 @@
   function formatModifier(modifier) { const value=num(modifier,0);return value>=0?`+${value}`:String(value); }
   function rollMonsterInitiative(monster) { return rollDie(20)+num(monster?.initiative_modifier,initiativeModifierFromDex(monster?.dexterity)); }
   function monsterKey(m) { return `${m.name}|${m.challenge_rating}|${m.hit_points}`.toLowerCase(); }
+  function importedRecordKey(record) { return `${record.name||''}|${record.source||record.import_source_code||''}`.toLowerCase(); }
+  function markCustom(record) {
+    const custom={...record,origin:'custom'};
+    delete custom.import_source;
+    delete custom.import_source_code;
+    return custom;
+  }
   function monsterBaseline(m) { const {id,original,...baseline}=m;return structuredClone(baseline); }
   function optionalNumber(value) {
     return value===undefined||value===null||String(value).trim()===''?null:num(value,0);
@@ -83,6 +104,13 @@
     Object.keys(SKILL_LABELS).forEach(key=>{if(optionalNumber(monster[key])!==null)add(key,monster[key]);});
     return result;
   }
+  function legendaryResistanceCount(monster={}) {
+    const direct=monster.legendary_resistances??monster.legendary_resistance_count??monster.legendaryResistanceCount??monster.legendary_resistance_uses??monster.legendary_resistance??monster.legendaryResistance;
+    if(direct!==undefined&&direct!==null&&String(direct).trim()!==''){const match=String(direct).match(/[-+]?\d+/);return match?Math.max(0,Math.floor(num(match[0],0))):0;}
+    const traits=Array.isArray(monster.special_abilities)?monster.special_abilities:Array.isArray(monster.traits)?monster.traits:[];
+    const text=traits.map(trait=>`${trait?.name||''} ${trait?.desc||''}`).join(' '),match=text.match(/legendary resistance(?:s)?\s*\(\s*(\d+)\s*\/\s*day\b/i);
+    return match?Math.max(0,Math.floor(num(match[1],0))):0;
+  }
   function normaliseMonster(m) {
     const challengeRating=String(m.challenge_rating??m.cr??'—');
     const dexterity=num(m.dexterity??m.dex,10),initiativeModifier=num(m.initiative_modifier??m.initiative_bonus,initiativeModifierFromDex(dexterity));
@@ -101,6 +129,7 @@
       challenge_rating:challengeRating,
       experience_points:num(m.experience_points??m.xp,experienceFromCR(challengeRating)),
       proficiency_bonus:num(m.proficiency_bonus??m.pb,proficiencyBonusFromCR(challengeRating)),
+      legendary_resistances:legendaryResistanceCount(m),
       initiative_modifier:initiativeModifier,
       initiative_score:num(m.initiative_score,10+initiativeModifier),
       strength:num(m.strength??m.str,10),
@@ -124,7 +153,7 @@
       legendary_actions:Array.isArray(m.legendary_actions)?m.legendary_actions:[]
     };
     ABILITIES.forEach(key=>{normalized[`${key}_save`]=optionalNumber(m[`${key}_save`]??m.saves?.[key]);});
-    if(!normalized.original){const bundled=Array.isArray(window.SRD_MONSTERS)?window.SRD_MONSTERS.find(x=>String(x.name).toLowerCase()===String(normalized.name).toLowerCase()):null;normalized.original=monsterBaseline(bundled||normalized);}
+    if(!normalized.original)normalized.original=monsterBaseline(normalized);
     return normalized;
   }
 
@@ -280,7 +309,7 @@
       ? `${abilityScoreSection(x)}${monsterFactSections(x)}${monsterActionSections(x,true)}`
       : `<details class="detail-section" open><summary>Character</summary><div class="detail-section-body"><div class="ability-static"><strong>${esc(x.className||'Class not set')}</strong><p>Played by ${esc(x.player||'—')}</p></div></div></details>`;
     panel.innerHTML=`<div class="detail-head"><div><p class="eyebrow">${x.kind==='pc'?'PLAYER CHARACTER':'CREATURE'}</p><h2>${esc(combatDisplayName(x))}</h2><div class="type">${esc(monsterTypeLine(x))}</div></div>${x.kind==='monster'?`<span class="cr-badge">CR ${esc(x.challenge_rating)}</span>`:''}</div>
-      <div class="stat-strip">${stat('AC',x.ac)}${stat('HP',`${x.hp}/${x.maxHp}`)}${stat('INIT',x.initiative)}</div>
+      <div class="stat-strip ${x.kind==='monster'?'monster-combat-core-stats':''}">${stat('AC',x.ac)}${stat('HP',`${x.hp}/${x.maxHp}`)}${stat('INIT',x.initiative)}${x.kind==='monster'?stat('LEG. RES.',legendaryResistanceCount(x)):''}</div>
       <details class="detail-section" open><summary>Conditions</summary><div class="detail-section-body"><div class="condition-row">${(x.conditions||[]).map(c=>`<button class="condition" data-remove-condition="${esc(c)}">${esc(c)} ×</button>`).join('')||'<span class="type">None</span>'}</div><button class="button ghost" id="addConditionBtn" style="margin-top:10px">＋ Add condition</button></div></details>
       ${details}`;
   }
@@ -307,7 +336,7 @@
   function showMonsterPreview(m) {
     if(!m)return;
     const stat=(label,val)=>`<div><span>${label}</span><strong>${val??'—'}</strong></div>`,xp=m.experience_points?`${num(m.experience_points).toLocaleString('en-GB')} XP`:'—';
-    showDialog('Bestiary preview',m.name,`<div class="monster-preview"><div class="detail-head"><div><p class="eyebrow">CREATURE</p><h2>${esc(m.name)}</h2><div class="type">${esc(monsterTypeLine(m))}</div></div><span class="cr-badge">CR ${esc(m.challenge_rating)} · ${esc(xp)}</span></div><div class="stat-strip monster-core-stats">${stat('AC',m.armor_class)}${stat('HP',m.hit_dice?`${m.hit_points} (${m.hit_dice})`:m.hit_points)}${stat('INIT',`${formatModifier(m.initiative_modifier)} (${m.initiative_score})`)}${stat('PB',formatModifier(m.proficiency_bonus))}</div><div class="stat-strip ability-score-strip">${abilityScoreMarkup(m)}</div>${monsterFactSections(m)}${monsterActionSections(m,true)}</div>`,'<button value="cancel" class="button primary">Close</button>');
+    showDialog('Bestiary preview',m.name,`<div class="monster-preview"><div class="detail-head"><div><p class="eyebrow">CREATURE</p><h2>${esc(m.name)}</h2><div class="type">${esc(monsterTypeLine(m))}</div></div><span class="cr-badge">CR ${esc(m.challenge_rating)} · ${esc(xp)}</span></div><div class="stat-strip monster-core-stats">${stat('AC',m.armor_class)}${stat('HP',m.hit_dice?`${m.hit_points} (${m.hit_dice})`:m.hit_points)}${stat('INIT',`${formatModifier(m.initiative_modifier)} (${m.initiative_score})`)}${stat('PB',formatModifier(m.proficiency_bonus))}${stat('LEG. RES.',m.legendary_resistances)}</div><div class="stat-strip ability-score-strip">${abilityScoreMarkup(m)}</div>${monsterFactSections(m)}${monsterActionSections(m,true)}</div>`,'<button value="cancel" class="button primary">Close</button>');
   }
 
   function showDialog(eyebrow,title,body,footer='') {
@@ -422,10 +451,50 @@
     select.innerHTML='<option value="">All challenge ratings</option>'+crs.map(x=>`<option ${x===current?'selected':''}>${esc(x)}</option>`).join('');
   }
 
+  function applyFiveToolsRecords(kind,payloads,requestedSources=[]) {
+    if(!FIVE_TOOLS)throw new Error('The 5etools import converter is unavailable.');
+    const converter=kind==='monsters'?FIVE_TOOLS.convertMonster:FIVE_TOOLS.convertSpell,normalizer=kind==='monsters'?normaliseMonster:normaliseSpell;
+    const converted=payloads.flatMap(payload=>FIVE_TOOLS.extract(kind,payload)).map(converter),unique=new Map();converted.forEach(record=>unique.set(importedRecordKey(record),record));
+    const merged=FIVE_TOOLS.reconcileImported(state[kind],[...unique.values()],requestedSources);
+    const imported=merged.imported.map(record=>{const normalized=normalizer(record);if(kind==='monsters')normalized.original=monsterBaseline(normalized);return normalized;});
+    state[kind]=[...merged.retained,...imported].sort((a,b)=>a.name.localeCompare(b.name)||String(a.source||'').localeCompare(String(b.source||'')));
+    save();if(kind==='monsters')renderMonsters();else renderSpells();
+    return {added:merged.added,refreshed:merged.refreshed,total:imported.length};
+  }
+
   function importMonsters(file) {
     const reader=new FileReader();
-    reader.onload=()=>{ try { const raw=JSON.parse(reader.result), arr=Array.isArray(raw)?raw:Array.isArray(raw.results)?raw.results:[raw]; const existing=new Set(state.monsters.map(monsterKey)); let added=0,updated=0; arr.forEach(item=>{ const m=normaliseMonster(item), key=monsterKey(m), idx=state.monsters.findIndex(x=>monsterKey(x)===key); if(idx>=0){m.id=state.monsters[idx].id;m.original=state.monsters[idx].original||m.original;state.monsters[idx]=m;updated++;}else{state.monsters.push(m);existing.add(key);added++;} }); state.monsters.sort((a,b)=>a.name.localeCompare(b.name)); save(); renderMonsters(); toast(`${added} added · ${updated} updated`); } catch(e){ toast('That file is not valid monster JSON'); } };
+    reader.onload=()=>{try{const raw=JSON.parse(reader.result);if(raw&&Array.isArray(raw.monster)){const sources=[...new Set(raw.monster.map(item=>item.source).filter(Boolean))],result=applyFiveToolsRecords('monsters',[raw],sources);return toast(`${result.total} 5etools monsters imported`);}const arr=Array.isArray(raw)?raw:Array.isArray(raw.results)?raw.results:[raw];let added=0,updated=0;arr.forEach(item=>{const custom=markCustom(item),m=normaliseMonster(custom),key=monsterKey(m),idx=state.monsters.findIndex(x=>x.import_source!=='5etools'&&monsterKey(x)===key);if(idx>=0){m.id=state.monsters[idx].id;m.original=state.monsters[idx].original||m.original;state.monsters[idx]=m;updated++;}else{state.monsters.push(m);added++;}});state.monsters.sort((a,b)=>a.name.localeCompare(b.name));save();renderMonsters();toast(`${added} added · ${updated} updated`);}catch(error){console.error(error);toast('That file is not valid monster JSON');}};
     reader.readAsText(file);
+  }
+
+  function openFiveToolsImporter(kind) {
+    if(!FIVE_TOOLS)return toast('The 5etools importer did not load');
+    fiveToolsImportPlan=[];const noun=kind==='monsters'?'Bestiary':'Spells',url=FIVE_TOOLS.PAGE_URLS[kind];
+    $('#appDialog').dataset.fiveToolsKind=kind;
+    showDialog('Private library import',`Import ${noun} from 5etools`,`<div class="five-tools-intro"><p>Paste the 5etools ${noun} page or a specific 5etools data-file link. Echoes imports a private offline copy into your selected <strong>Echoes-library.json</strong>. The catalogue is downloaded from the source repository linked by 5etools.</p><p class="subtitle">Choose only the source books you use. Refreshing a source replaces only earlier 5etools records from that source; custom entries are never deleted.</p></div><label class="field full">5ETOOLS LINK<input id="fiveToolsUrl" type="url" value="${esc(url)}"></label><div id="fiveToolsSourceArea" class="five-tools-source-area"><p class="subtitle">Load the source list, then choose one or more books.</p></div><div id="fiveToolsProgress" class="five-tools-progress" role="status" aria-live="polite"></div>`,`<button value="cancel" class="button ghost">Cancel</button><button type="button" id="loadFiveToolsSourcesBtn" class="button primary">Load source list</button>`);
+  }
+
+  async function loadFiveToolsSources() {
+    const kind=$('#appDialog').dataset.fiveToolsKind,area=$('#fiveToolsSourceArea'),button=$('#loadFiveToolsSourcesBtn');
+    try{button.disabled=true;button.textContent='Loading…';const resolved=FIVE_TOOLS.resolveInput(kind,$('#fiveToolsUrl').value.trim());
+      if(resolved.mode==='file')fiveToolsImportPlan=[{code:resolved.filename.replace(/\.json$/i,''),filename:resolved.filename,url:resolved.url}];
+      else{const response=await fetch(resolved.url);if(!response.ok)throw new Error(`Source list request failed (${response.status}).`);const index=await response.json();fiveToolsImportPlan=Object.entries(index).map(([code,filename])=>({code,filename,url:FIVE_TOOLS.sourceFileUrl(kind,filename)})).sort((a,b)=>a.code.localeCompare(b.code));}
+      area.innerHTML=`<div class="five-tools-source-toolbar"><strong>${fiveToolsImportPlan.length} source${fiveToolsImportPlan.length===1?'':'s'} available</strong><button type="button" id="toggleFiveToolsSourcesBtn" class="button ghost">Select all</button></div><div class="five-tools-source-list">${fiveToolsImportPlan.map((item,index)=>`<label class="filter-check"><input type="checkbox" data-five-tools-source value="${index}" ${fiveToolsImportPlan.length===1?'checked':''}><span><strong>${esc(item.code)}</strong><small>${esc(item.filename)}</small></span></label>`).join('')}</div>`;
+      $('#dialogFooter').innerHTML='<button value="cancel" class="button ghost">Cancel</button><button type="button" id="confirmFiveToolsImportBtn" class="button primary">Import selected</button>';
+    }catch(error){console.error(error);area.innerHTML=`<p class="import-error">${esc(error.message||'The 5etools source list could not be loaded.')}</p>`;button.disabled=false;button.textContent='Try again';}
+  }
+
+  function toggleFiveToolsSources() {
+    const boxes=$$('[data-five-tools-source]'),selectAll=boxes.some(box=>!box.checked);boxes.forEach(box=>box.checked=selectAll);const button=$('#toggleFiveToolsSourcesBtn');if(button)button.textContent=selectAll?'Clear all':'Select all';
+  }
+
+  async function confirmFiveToolsImport() {
+    const kind=$('#appDialog').dataset.fiveToolsKind,selected=$$('[data-five-tools-source]:checked').map(box=>fiveToolsImportPlan[num(box.value)]).filter(Boolean),button=$('#confirmFiveToolsImportBtn'),progress=$('#fiveToolsProgress');
+    if(!selected.length)return toast('Choose at least one source book');
+    button.disabled=true;$$('#appDialog button').forEach(item=>{if(item.value==='cancel')item.disabled=true;});let cursor=0,complete=0;const payloads=new Array(selected.length);
+    try{const worker=async()=>{while(cursor<selected.length){const index=cursor++,item=selected[index];if(progress)progress.textContent=`Downloading ${complete+1} of ${selected.length}: ${item.code}…`;const response=await fetch(item.url);if(!response.ok)throw new Error(`${item.code} failed (${response.status}).`);payloads[index]=await response.json();complete++;}};await Promise.all(Array.from({length:Math.min(4,selected.length)},worker));if(progress)progress.textContent='Converting and saving…';const result=applyFiveToolsRecords(kind,payloads,selected.map(item=>item.code));closeDialog();toast(`${result.total} ${kind} imported · ${result.refreshed} refreshed`);
+    }catch(error){console.error(error);if(progress)progress.innerHTML=`<span class="import-error">Import stopped without changing your library: ${esc(error.message||'download failed')}</span>`;button.disabled=false;$$('#appDialog button').forEach(item=>item.disabled=false);}
   }
 
   function monsterForm(m={}) {
@@ -439,6 +508,7 @@
       <label class="field">PROFICIENCY BONUS<input id="mPb" type="number" value="${num(m.proficiency_bonus,proficiencyBonusFromCR(m.challenge_rating||'1'))}"></label><label class="field">ARMOR CLASS<input id="mAc" type="number" value="${m.armor_class||10}"></label>
       <label class="field">HIT POINTS<input id="mHp" type="number" value="${m.hit_points||10}"></label><label class="field">HIT DICE / HP FORMULA<input id="mHitDice" value="${esc(m.hit_dice||'')}"></label>
       <label class="field">INITIATIVE MODIFIER<input id="mInitiativeModifier" type="number" value="${num(m.initiative_modifier,initiativeModifierFromDex(m.dexterity||10))}"></label><label class="field">INITIATIVE SCORE<input id="mInitiativeScore" type="number" value="${num(m.initiative_score,10+num(m.initiative_modifier,initiativeModifierFromDex(m.dexterity||10)))}"></label>
+      <label class="field">LEGENDARY RESISTANCES<input id="mLegendaryResistances" type="number" min="0" step="1" value="${legendaryResistanceCount(m)}"></label>
       <div class="monster-form-section full"><h3>Abilities & saving throws</h3><p>Leave a save blank to use the normal ability modifier.</p><div class="monster-ability-editor">${abilityRows}</div></div>
       <label class="field full">SKILLS <small>One per line: Skill | Bonus</small><textarea id="mSkills" rows="5">${esc(skillText)}</textarea></label>
       <label class="field full">SPEED<input id="mSpeed" value="${esc(m.speed||'30 ft.')}"></label><label class="field full">SENSES<input id="mSenses" value="${esc(m.senses||'')}"></label>
@@ -463,8 +533,8 @@
     const name=$('#mName').value.trim();if(!name)return toast('Give the monster a name');
     const editId=$('#appDialog').dataset.editMonsterId,cloneId=$('#appDialog').dataset.cloneMonsterId,idx=state.monsters.findIndex(x=>x.id===editId),cloneIdx=state.monsters.findIndex(x=>x.id===cloneId),base=idx>=0?state.monsters[idx]:cloneIdx>=0?state.monsters[cloneIdx]:{};
     const abilityFields={};ABILITIES.forEach(key=>{const title=key[0].toUpperCase()+key.slice(1);abilityFields[key]=$(`#m${title}`).value;abilityFields[`${key}_save`]=$(`#m${title}Save`).value;});
-    const draft={...base,...abilityFields,id:editId||uid(),name,size:$('#mSize').value,type:$('#mType').value,subtype:$('#mSubtype').value,alignment:$('#mAlignment').value,source_url:$('#mSourceUrl').value,challenge_rating:$('#mCr').value,experience_points:$('#mXp').value,proficiency_bonus:$('#mPb').value,armor_class:$('#mAc').value,hit_points:$('#mHp').value,hit_dice:$('#mHitDice').value,initiative_modifier:$('#mInitiativeModifier').value,initiative_score:$('#mInitiativeScore').value,skills:parseSkillBonuses($('#mSkills').value),speed:$('#mSpeed').value,senses:$('#mSenses').value,languages:$('#mLanguages').value,damage_vulnerabilities:$('#mDamageVulnerabilities').value,damage_resistances:$('#mDamageResistances').value,damage_immunities:$('#mDamageImmunities').value,condition_immunities:$('#mConditionImmunities').value,actions:parseAbilities($('#mActions').value),special_abilities:parseAbilities($('#mAbilities').value),bonus_actions:parseAbilities($('#mBonusActions').value),reactions:parseAbilities($('#mReactions').value),legendary_actions:parseAbilities($('#mLegendary').value)};
-    if(!editId){delete draft.original;draft.original=monsterBaseline(draft);}const monster=normaliseMonster(draft);if(idx>=0)state.monsters[idx]=monster;else state.monsters.push(monster);state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;delete $('#appDialog').dataset.cloneMonsterId;save();closeDialog();renderMonsters();toast(`${name} ${idx>=0?'updated':'added to the bestiary'}`);
+    const draft={...base,...abilityFields,id:editId||uid(),name,size:$('#mSize').value,type:$('#mType').value,subtype:$('#mSubtype').value,alignment:$('#mAlignment').value,source_url:$('#mSourceUrl').value,challenge_rating:$('#mCr').value,experience_points:$('#mXp').value,proficiency_bonus:$('#mPb').value,legendary_resistances:$('#mLegendaryResistances').value,armor_class:$('#mAc').value,hit_points:$('#mHp').value,hit_dice:$('#mHitDice').value,initiative_modifier:$('#mInitiativeModifier').value,initiative_score:$('#mInitiativeScore').value,skills:parseSkillBonuses($('#mSkills').value),speed:$('#mSpeed').value,senses:$('#mSenses').value,languages:$('#mLanguages').value,damage_vulnerabilities:$('#mDamageVulnerabilities').value,damage_resistances:$('#mDamageResistances').value,damage_immunities:$('#mDamageImmunities').value,condition_immunities:$('#mConditionImmunities').value,actions:parseAbilities($('#mActions').value),special_abilities:parseAbilities($('#mAbilities').value),bonus_actions:parseAbilities($('#mBonusActions').value),reactions:parseAbilities($('#mReactions').value),legendary_actions:parseAbilities($('#mLegendary').value)};
+    const customDraft=markCustom(draft);if(!editId){delete customDraft.original;customDraft.original=monsterBaseline(customDraft);}const monster=normaliseMonster(customDraft);if(idx>=0)state.monsters[idx]=monster;else state.monsters.push(monster);state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;delete $('#appDialog').dataset.cloneMonsterId;save();closeDialog();renderMonsters();toast(`${name} ${idx>=0?'updated':'added to the bestiary'}`);
   }
   function deleteMonsterFromBestiary() { const id=$('#appDialog').dataset.deleteMonsterId,monster=state.monsters.find(x=>x.id===id);if(!monster)return;state.monsters=state.monsters.filter(x=>x.id!==id);delete $('#appDialog').dataset.deleteMonsterId;save();closeDialog();renderMonsters();toast(`${monster.name} removed from the Bestiary`); }
   function restoreMonsterDefault() { const id=$('#appDialog').dataset.editMonsterId,idx=state.monsters.findIndex(x=>x.id===id);if(idx<0)return;const current=state.monsters[idx],baseline=structuredClone(current.original||monsterBaseline(current));state.monsters[idx]=normaliseMonster({...baseline,id:current.id,original:baseline});state.monsters.sort((a,b)=>a.name.localeCompare(b.name));delete $('#appDialog').dataset.editMonsterId;save();closeDialog();renderMonsters();toast(`${baseline.name||current.name} restored to default`); }
@@ -492,8 +562,8 @@
     showDialog('Spell reference',spell.name,`<div class="spell-meta"><span>${esc(spell.level)}</span><span>${esc(spell.school||'—')}</span><span>${esc(spell.casting_time||'—')}</span></div><div class="stat-strip"><div><span>RANGE</span><strong>${esc(spell.range||'—')}</strong></div><div><span>DURATION</span><strong>${esc((spell.duration||'—')+concentration)}</strong></div><div><span>COMPONENTS</span><strong>${esc(spell.components||'—')}</strong></div></div><div class="spell-description">${richDescription(spell.desc)}</div>${spell.higher_level?`<div class="detail-section"><h3>At higher levels</h3><div class="spell-description">${richDescription(spell.higher_level)}</div></div>`:''}${spell.material?`<div class="detail-section"><h3>Material</h3><p>${esc(spell.material)}</p></div>`:''}<div class="detail-section"><h3>Classes</h3><p>${esc(spell.class||'—')}</p></div>`,'<button value="cancel" class="button ghost">Close</button>');
   }
   function spellForm(s={}) { return `<div class="form-grid"><label class="field full">NAME<input id="sName" value="${esc(s.name||'')}"></label><label class="field">LEVEL<input id="sLevel" value="${esc(s.level||'Cantrip')}"></label><label class="field">SCHOOL<input id="sSchool" value="${esc(s.school||'')}"></label><label class="field">CASTING TIME<input id="sCasting" value="${esc(s.casting_time||'1 action')}"></label><label class="field">RANGE<input id="sRange" value="${esc(s.range||'')}"></label><label class="field">DURATION<input id="sDuration" value="${esc(s.duration||'')}"></label><label class="field">COMPONENTS<input id="sComponents" value="${esc(s.components||'')}"></label><label class="field full">CLASSES<input id="sClass" value="${esc(s.class||'')}"></label><label class="field full">DESCRIPTION<textarea id="sDesc" rows="7">${esc(stripHtml(s.desc||''))}</textarea></label><label class="field full">AT HIGHER LEVELS<textarea id="sHigher" rows="4">${esc(stripHtml(s.higher_level||''))}</textarea></label></div>`; }
-  function saveSpell() { const name=$('#sName').value.trim();if(!name)return toast('Give the spell a name');state.spells.push(normaliseSpell({name,level:$('#sLevel').value,school:$('#sSchool').value,casting_time:$('#sCasting').value,range:$('#sRange').value,duration:$('#sDuration').value,components:$('#sComponents').value,class:$('#sClass').value,desc:$('#sDesc').value,higher_level:$('#sHigher').value}));state.spells.sort((a,b)=>a.name.localeCompare(b.name));save();closeDialog();renderSpells();toast(`${name} added to spells`); }
-  function importSpells(file) { const reader=new FileReader();reader.onload=()=>{try{const raw=JSON.parse(reader.result),arr=Array.isArray(raw)?raw:Array.isArray(raw.results)?raw.results:[raw];let added=0,updated=0;arr.forEach(item=>{const s=normaliseSpell(item),idx=state.spells.findIndex(x=>x.name.toLowerCase()===s.name.toLowerCase());if(idx>=0){s.id=state.spells[idx].id;state.spells[idx]=s;updated++;}else{state.spells.push(s);added++;}});state.spells.sort((a,b)=>a.name.localeCompare(b.name));save();renderSpells();toast(`${added} added · ${updated} updated`);}catch{toast('That file is not valid spell JSON');}};reader.readAsText(file); }
+  function saveSpell() { const name=$('#sName').value.trim();if(!name)return toast('Give the spell a name');state.spells.push(normaliseSpell(markCustom({name,level:$('#sLevel').value,school:$('#sSchool').value,casting_time:$('#sCasting').value,range:$('#sRange').value,duration:$('#sDuration').value,components:$('#sComponents').value,class:$('#sClass').value,desc:$('#sDesc').value,higher_level:$('#sHigher').value})));state.spells.sort((a,b)=>a.name.localeCompare(b.name));save();closeDialog();renderSpells();toast(`${name} added to spells`); }
+  function importSpells(file) { const reader=new FileReader();reader.onload=()=>{try{const raw=JSON.parse(reader.result);if(raw&&Array.isArray(raw.spell)){const sources=[...new Set(raw.spell.map(item=>item.source).filter(Boolean))],result=applyFiveToolsRecords('spells',[raw],sources);return toast(`${result.total} 5etools spells imported`);}const arr=Array.isArray(raw)?raw:Array.isArray(raw.results)?raw.results:[raw];let added=0,updated=0;arr.forEach(item=>{const s=normaliseSpell(markCustom(item)),idx=state.spells.findIndex(x=>x.import_source!=='5etools'&&x.name.toLowerCase()===s.name.toLowerCase());if(idx>=0){s.id=state.spells[idx].id;state.spells[idx]=s;updated++;}else{state.spells.push(s);added++;}});state.spells.sort((a,b)=>a.name.localeCompare(b.name));save();renderSpells();toast(`${added} added · ${updated} updated`);}catch(error){console.error(error);toast('That file is not valid spell JSON');}};reader.readAsText(file); }
 
   function renderParties() {
     $('#partyGrid').innerHTML=state.parties.length?state.parties.map(p=>`<article class="card party-card"><button class="party-delete-button" data-delete-party="${p.id}" aria-label="Delete ${esc(p.name)}" title="Delete ${esc(p.name)}">×</button><p class="eyebrow">${p.members.length} MEMBERS</p><h2>${esc(p.name)}</h2><p class="meta">Ready player roster</p><div class="roster-preview">${p.members.map(m=>`<span>${esc(m.name)} · AC ${m.ac}</span>`).join('')}</div><div class="card-actions"><button class="button ghost" data-edit-party="${p.id}">Edit</button><button class="button primary" data-add-party="${p.id}">Add to combat</button></div></article>`).join(''):'<div class="empty-collection"><h2>No parties yet</h2><p>Create your regular player roster once, then reuse it in every encounter.</p></div>';
@@ -549,7 +619,7 @@
   function removeCombatant(id) { const x=state.combat.combatants.find(y=>y.id===id); if(!x)return;const displayName=combatDisplayName(x);state.combat.combatants=state.combat.combatants.filter(y=>y.id!==id);state.combat.turn=Math.min(state.combat.turn,Math.max(0,state.combat.combatants.length-1));state.combat.selectedId=state.combat.combatants[state.combat.turn]?.id||null;save();renderCombat();toast(`${displayName} removed from combat`); }
   function rowMenu(id) {
     const x=state.combat.combatants.find(y=>y.id===id);
-    const monsterFields=x.kind==='monster'?`<label class="field full">INSTANCE NAME<input id="editName" value="${esc(x.name)}"></label><label class="field full">SPEED<input id="editSpeed" value="${esc(x.speed||'')}"></label><label class="field full">SENSES<input id="editSenses" value="${esc(x.senses||'')}"></label><label class="field full">TRAITS <small>One per line: Name | Description</small><textarea id="editAbilities" rows="5">${esc((x.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="editActions" rows="6">${esc((x.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">BONUS ACTIONS <small>One per line: Name | Description</small><textarea id="editBonusActions" rows="4">${esc((x.bonus_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">REACTIONS <small>One per line: Name | Description</small><textarea id="editReactions" rows="4">${esc((x.reactions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="editLegendary" rows="5">${esc((x.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>`:'';
+    const monsterFields=x.kind==='monster'?`<label class="field full">INSTANCE NAME<input id="editName" value="${esc(x.name)}"></label><label class="field full">SPEED<input id="editSpeed" value="${esc(x.speed||'')}"></label><label class="field full">SENSES<input id="editSenses" value="${esc(x.senses||'')}"></label><label class="field">LEGENDARY RESISTANCES<input id="editLegendaryResistances" type="number" min="0" step="1" value="${legendaryResistanceCount(x)}"></label><label class="field full">TRAITS <small>One per line: Name | Description</small><textarea id="editAbilities" rows="5">${esc((x.special_abilities||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">ACTIONS <small>One per line: Name | Description</small><textarea id="editActions" rows="6">${esc((x.actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">BONUS ACTIONS <small>One per line: Name | Description</small><textarea id="editBonusActions" rows="4">${esc((x.bonus_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">REACTIONS <small>One per line: Name | Description</small><textarea id="editReactions" rows="4">${esc((x.reactions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label><label class="field full">LEGENDARY ACTIONS <small>One per line: Name | Description</small><textarea id="editLegendary" rows="5">${esc((x.legendary_actions||[]).map(a=>`${a.name} | ${a.desc}`).join('\n'))}</textarea></label>`:'';
     const saveCustom=x.kind==='monster'?'<button type="button" id="saveCombatMonsterBtn" class="button ghost">Save to Bestiary</button>':'';
     showDialog('Combatant options',combatDisplayName(x),`<div class="form-grid">${monsterFields}<label class="field">CURRENT HP<input id="editHp" type="number" value="${x.hp}"></label><label class="field">MAX HP<input id="editMaxHp" type="number" value="${x.maxHp}"></label><label class="field">ARMOR CLASS<input id="editAc" type="number" value="${x.ac}"></label><label class="field">INITIATIVE<input id="editInit" type="number" value="${x.initiative}"></label></div>`,saveCustom+'<button type="button" id="removeCombatantBtn" class="button danger-ghost">Remove</button><button value="cancel" class="button ghost">Cancel</button><button type="button" id="saveCombatantBtn" class="button primary">Save changes</button>');
     $('#appDialog').dataset.combatantId=id;
@@ -557,16 +627,19 @@
   function saveCombatantChanges(closeAfter=true) {
     const x=state.combat.combatants.find(y=>y.id===$('#appDialog').dataset.combatantId);if(!x)return;const currentId=state.combat.combatants[state.combat.turn]?.id;
     x.hp=num($('#editHp').value,x.hp);x.maxHp=Math.max(1,num($('#editMaxHp').value,x.maxHp));x.hp=Math.max(0,Math.min(x.maxHp,x.hp));x.ac=num($('#editAc').value,x.ac);x.initiative=num($('#editInit').value,x.initiative);
-    if(x.kind==='monster'&&$('#editName')){x.name=$('#editName').value.trim()||x.name;x.speed=$('#editSpeed').value;x.senses=$('#editSenses').value;x.special_abilities=parseAbilities($('#editAbilities').value);x.actions=parseAbilities($('#editActions').value);x.bonus_actions=parseAbilities($('#editBonusActions').value);x.reactions=parseAbilities($('#editReactions').value);x.legendary_actions=parseAbilities($('#editLegendary').value);}
+    if(x.kind==='monster'&&$('#editName')){x.name=$('#editName').value.trim()||x.name;x.speed=$('#editSpeed').value;x.senses=$('#editSenses').value;x.legendary_resistances=Math.max(0,Math.floor(num($('#editLegendaryResistances').value,0)));x.special_abilities=parseAbilities($('#editAbilities').value);x.actions=parseAbilities($('#editActions').value);x.bonus_actions=parseAbilities($('#editBonusActions').value);x.reactions=parseAbilities($('#editReactions').value);x.legendary_actions=parseAbilities($('#editLegendary').value);}
     sortCombatants();state.combat.turn=Math.max(0,state.combat.combatants.findIndex(y=>y.id===currentId));state.combat.selectedId=x.id;save();if(closeAfter){closeDialog();renderCombat();}return x;
   }
-  function saveCombatMonsterToBestiary() { const x=saveCombatantChanges(false);if(!x||x.kind!=='monster')return;const {id,sourceId,kind,hp,maxHp,ac,initiative,conditions,added,original,...base}=x,draft={...base,id:uid(),armor_class:ac,hit_points:maxHp};draft.original=monsterBaseline(draft);state.monsters.push(normaliseMonster(draft));state.monsters.sort((a,b)=>a.name.localeCompare(b.name));save();closeDialog();renderCombat();renderMonsters();toast(`${x.name} saved to the Bestiary`); }
+  function saveCombatMonsterToBestiary() { const x=saveCombatantChanges(false);if(!x||x.kind!=='monster')return;const {id,sourceId,kind,hp,maxHp,ac,initiative,conditions,added,original,...base}=x,draft=markCustom({...base,id:uid(),armor_class:ac,hit_points:maxHp});draft.original=monsterBaseline(draft);state.monsters.push(normaliseMonster(draft));state.monsters.sort((a,b)=>a.name.localeCompare(b.name));save();closeDialog();renderCombat();renderMonsters();toast(`${x.name} saved to the Bestiary`); }
 
   function handleDialogClick(e) {
     const diceLink=e.target.closest('[data-dice-expression]');if(diceLink)return rollDiceExpression(diceLink.dataset.diceExpression,diceSourceForElement(diceLink));
     if(e.target.id==='confirmCustomDieBtn')return saveCustomDie();
     const spellLink=e.target.closest('[data-spell-name]');if(spellLink)return showSpellDetails(state.spells.find(s=>s.name===spellLink.dataset.spellName));
     if(e.target.id==='saveSpellBtn')return saveSpell();
+    if(e.target.id==='loadFiveToolsSourcesBtn')return loadFiveToolsSources();
+    if(e.target.id==='toggleFiveToolsSourcesBtn')return toggleFiveToolsSources();
+    if(e.target.id==='confirmFiveToolsImportBtn')return confirmFiveToolsImport();
     const tab=e.target.closest('[data-picker-tab]'); if(tab){rememberVisibleCombatPickerSelections();return renderPicker(tab.dataset.pickerTab);}
     if(e.target.id==='confirmAddBtn')return confirmAdd();
     if(e.target.id==='confirmSaveEncounterBtn')return commitActiveEncounter();
@@ -603,8 +676,10 @@
     const tab=e.target.closest('[data-picker-tab]'); if(tab){rememberVisibleCombatPickerSelections();return renderPicker(tab.dataset.pickerTab);}
     if(e.target.id==='confirmAddBtn')return confirmAdd();
     if(e.target.id==='importMonstersBtn')return $('#monsterFile').click();
+    if(e.target.id==='importFiveToolsMonstersBtn')return openFiveToolsImporter('monsters');
     if(e.target.id==='importEncounterBtn')return $('#encounterFile').click();
     if(e.target.id==='importSpellsBtn')return $('#spellFile').click();
+    if(e.target.id==='importFiveToolsSpellsBtn')return openFiveToolsImporter('spells');
     if(e.target.id==='clearSpellFilters'){Object.values(spellFilters).forEach(set=>set.clear());renderSpells();return;}
     if(e.target.id==='newSpellBtn'){showDialog('Spell library','Create spell',spellForm(),'<button value="cancel" class="button ghost">Cancel</button><button type="button" id="saveSpellBtn" class="button primary">Save spell</button>');return;}
     const spellLink=e.target.closest('[data-spell-name]');if(spellLink)return showSpellDetails(state.spells.find(s=>s.name===spellLink.dataset.spellName));
@@ -656,7 +731,7 @@
   $('#encounterFile').addEventListener('change',e=>{if(e.target.files[0])importEncounter(e.target.files[0]);e.target.value='';});
   $('#spellFile').addEventListener('change',e=>{if(e.target.files[0])importSpells(e.target.files[0]);e.target.value='';});
 
-  window.EchoesApp={get state(){return state;},defaults,uid,esc,num,save,toast,showDialog,closeDialog,openCustomDieDialog,rollMonsterInitiative,monsterForm,normaliseMonster,monsterBaseline,parseAbilities,renderMonsters,renderCombat,sortCombatants,switchView,showMonsterPreview};
+  window.EchoesApp={get state(){return state;},defaults,uid,esc,num,save,replaceState,markCustom,applyFiveToolsRecords,toast,showDialog,closeDialog,openCustomDieDialog,rollMonsterInitiative,monsterForm,normaliseMonster,monsterBaseline,parseAbilities,renderMonsters,renderCombat,sortCombatants,switchView,showMonsterPreview};
 
   state.combat.combatants.forEach(x=>x.conditions=(x.conditions||[]).map(condition=>condition==='Concentrating'?'Concentration':condition));
   state.monsters=state.monsters.map(normaliseMonster);

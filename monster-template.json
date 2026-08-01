@@ -37,6 +37,7 @@
     "challenge_rating": "10",
     "experience_points": 5900,
     "proficiency_bonus": 4,
+    "legendary_resistances": 0,
     "special_abilities": [
       {
         "name": "Example Trait",

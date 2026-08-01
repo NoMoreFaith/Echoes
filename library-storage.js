@@ -32,6 +32,7 @@
   }
 
   function currentState() {
+    if (window.EchoesApp?.state) return core.validateState(structuredClone(window.EchoesApp.state));
     const serialized = localStorage.getItem(STORAGE_KEY);
     if (!serialized) throw new Error('No Echoes working data is available');
     return core.validateState(JSON.parse(serialized));
@@ -52,7 +53,10 @@
   }
 
   function replaceWorkingCopy(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(core.validateState(state)));
+    const validated=core.validateState(state);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(validated)); }
+    catch(error) { console.warn('The external library is larger than the browser recovery copy.', error); }
+    window.EchoesApp?.replaceState(validated);
   }
 
   function openHandleDatabase() {
@@ -180,8 +184,7 @@
         }
         sessionStorage.setItem(RELOAD_SOURCE_KEY, sourceFingerprint);
         replaceWorkingCopy(parsed.state);
-        location.hash = '';
-        location.reload();
+        sessionStorage.removeItem(RELOAD_SOURCE_KEY);
         return true;
       }
       sessionStorage.removeItem(RELOAD_SOURCE_KEY);
@@ -317,8 +320,7 @@
       const parsed = core.parseLibraryText(await file.text());
       replaceWorkingCopy(parsed.state);
       if (libraryHandle && ['connected', 'saved'].includes(libraryState)) await writeStateToHandle(parsed.state);
-      location.hash = '';
-      location.reload();
+      toast('Complete Echoes backup imported');
     } catch (error) {
       toast(error.message || 'That file is not a complete Echoes backup');
     }

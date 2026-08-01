@@ -32,6 +32,8 @@ const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
 const resumeBody = storage.slice(storage.indexOf('async function resumeLibraryPermission'), storage.indexOf('async function retryStoredLibrary'));
 
 assert.match(storage, /id: 'echoes-library'/);
+assert.match(storage, /window\.EchoesApp\?\.state/);
+assert.match(storage, /window\.EchoesApp\?\.replaceState\(validated\)/);
 assert.match(storage, /indexedDB\.open\(HANDLE_DB/);
 assert.match(storage, /setTimeout\(writeLibraryFile, 1000\)/);
 assert.match(storage, /await validateFileBeforeAutomaticWrite\(\);[\s\S]*await writeStateToHandle\(state\)/);

@@ -77,3 +77,18 @@ See [HELP.md](HELP.md) for the complete user guide.
 ## Durable library storage
 
 Browser storage is only a working copy. In the installed Chrome/ChromeOS app, choose the exact external `Echoes-library.json` from **Data & library** in any folder exposed by the system file picker. Echoes loads that file as its authoritative campaign library and mirrors every change to it. If browser data is cleared or Echoes is opened on another Chromebook, reconnect the same file.
+
+## Importing a private 5etools catalogue
+
+Echoes does not publish a bundled monster or spell database. To build your personal offline reference:
+
+1. Connect the authoritative **Echoes-library.json** from **Backup** first.
+2. Open **Bestiary** or **Spells**.
+3. Select **Import 5etools**.
+4. Leave the normal 5etools page link in place, or paste a specific 5etools data-file link.
+5. Select **Load source list**, tick only the source books you use, then select **Import selected**.
+6. Wait for the confirmation and verify that Backup reports **Last saved successfully**.
+
+Echoes recognises the 5etools link and downloads the matching JSON from the public source repository linked by 5etools. Imported content is copied into your own `Echoes-library.json`; it works offline after import. Refreshing the same source updates only records previously tagged as 5etools imports from that source. It never removes custom monsters, custom spells, local file imports, or records imported from another source.
+
+Source books are deliberately selected rather than all downloaded at once because complete 5etools catalogues can be very large. Use 5etools as a reference for products you own and follow the rules that apply where you live.
