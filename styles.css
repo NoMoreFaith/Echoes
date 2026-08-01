@@ -159,6 +159,11 @@ h3 { font-size: 20px; }
 .roster-preview { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 18px; }
 .roster-preview span { background: var(--panel-2); color: #c8c0b5; border-radius: 5px; padding: 5px 7px; font-size: 11px; }
 .search-row { padding: 20px 40px; display: flex; gap: 12px; border-bottom: 1px solid var(--line); }
+.collection-toolbar { position: sticky; top: 0; z-index: 24; background: var(--bg); box-shadow: 0 10px 24px rgba(0,0,0,.28); }
+.bestiary-search-row { flex-wrap: wrap; }
+.bestiary-search-row .search-box { min-width: min(360px,100%); }
+.bestiary-search-row select { flex: 0 1 165px; min-width: 135px; }
+.spell-collection-controls > .search-row { border-bottom-color: color-mix(in srgb, var(--line) 70%, transparent); }
 .search-box { flex: 1; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; }
 .search-box input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }
 select, input, textarea { border: 1px solid var(--line); border-radius: 7px; background: #161311; color: var(--ink); padding: 10px 12px; }
@@ -223,6 +228,7 @@ dialog::backdrop { background: rgba(4,3,2,.78); backdrop-filter: blur(3px); }
 @media print {
   .sidebar, .top-actions, .combat-toolbar button, .hp-buttons, .row-actions { display: none !important; }
   .app-shell { display: block; }
+  .collection-toolbar { position: static; box-shadow: none; }
 }
 
 .dc { color: var(--ink); font-weight: 700; }

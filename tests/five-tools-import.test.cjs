@@ -58,6 +58,23 @@ assert.equal(refreshed.records.find(item => item.name === 'Test Demon').id, 'xmm
 assert.equal(refreshed.records.some(item => item.id === 'xmm-stale'), false, 'stale record from selected source should be removed');
 assert.equal(refreshed.refreshed, 1);
 
+const sameNamedCustom = { id: 'custom-dragon', name: 'Ancient Dragon', origin: 'custom' };
+const olderImportedDragon = { id: 'mm-dragon', name: 'Ancient Dragon', source: 'MM', import_source: '5etools', import_source_code: 'MM' };
+const duplicateDragons = fiveTools.reconcileImported(
+  [sameNamedCustom, olderImportedDragon],
+  [
+    { name: ' Ancient Dragon ', source: 'XMM', import_source: '5etools', import_source_code: 'XMM', armor_class: 20 },
+    { name: 'ancient   dragon', source: 'XMM', import_source: '5etools', import_source_code: 'XMM', armor_class: 22 }
+  ],
+  ['XMM']
+);
+const importedDragons = duplicateDragons.records.filter(item => item.import_source === '5etools' && item.name.trim().replace(/\s+/g, ' ').toLowerCase() === 'ancient dragon');
+assert.equal(importedDragons.length, 1, 'repeated 5etools display names should collapse to one imported record');
+assert.equal(importedDragons[0].armor_class, 22, 'the later incoming record should win a duplicate-name tie');
+assert.equal(importedDragons[0].id, 'mm-dragon', 'deduplication should preserve the prior imported record ID');
+assert.ok(duplicateDragons.records.some(item => item.id === 'custom-dragon'), 'same-named custom records must be retained');
+assert.equal(duplicateDragons.duplicatesRemoved, 2, 'the incoming and previously imported duplicates should be reported');
+
 assert.equal(fiveTools.resolveInput('monsters', 'https://5e.tools/bestiary.html').mode, 'index');
 assert.match(fiveTools.resolveInput('spells', 'https://5e.tools/data/spells/spells-xphb.json').url, /raw\.githubusercontent\.com/);
 assert.throws(() => fiveTools.resolveInput('monsters', 'https://example.com/monsters.json'), /Use a 5e\.tools/);

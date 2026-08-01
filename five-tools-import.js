@@ -282,13 +282,18 @@
 
   function reconcileImported(existing, imported, requestedSources = []) {
     const current=Array.isArray(existing)?existing:[],incoming=Array.isArray(imported)?imported:[];
-    const key=record=>`${record.name||''}|${record.source||record.import_source_code||''}`.toLowerCase();
+    const nameKey=record=>String(record.name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    const key=record=>`${nameKey(record)}|${String(record.source||record.import_source_code||'').trim().toLowerCase()}`;
     const previousByKey=new Map(current.filter(record=>record.import_source==='5etools').map(record=>[key(record),record]));
+    const previousByName=new Map(current.filter(record=>record.import_source==='5etools').map(record=>[nameKey(record),record]));
     const sources=new Set([...requestedSources,...incoming.map(record=>record.import_source_code||record.source)].filter(Boolean).map(value=>String(value).toLowerCase()));
-    const retained=current.filter(record=>record.import_source!=='5etools'||!sources.has(String(record.import_source_code||record.source||'').toLowerCase()));
+    const candidates=current.filter(record=>record.import_source!=='5etools'||!sources.has(String(record.import_source_code||record.source||'').toLowerCase()));
+    const incomingByName=new Map();incoming.forEach(record=>incomingByName.set(nameKey(record),record));
     let refreshed=0,added=0;
-    const prepared=incoming.map(record=>{const copy={...record},previous=previousByKey.get(key(copy));if(previous){copy.id=previous.id;refreshed++;}else added++;return copy;});
-    return {records:[...retained,...prepared],retained,imported:prepared,refreshed,added};
+    const prepared=[...incomingByName.values()].map(record=>{const copy={...record},previous=previousByKey.get(key(copy))||previousByName.get(nameKey(copy));if(previous){copy.id=previous.id;refreshed++;}else added++;return copy;});
+    const incomingNames=new Set(prepared.map(nameKey)),seenImportedNames=new Set();let duplicatesRemoved=incoming.length-prepared.length;
+    const retained=candidates.filter(record=>{if(record.import_source!=='5etools')return true;const name=nameKey(record);if(incomingNames.has(name)||seenImportedNames.has(name)){duplicatesRemoved++;return false;}seenImportedNames.add(name);return true;});
+    return {records:[...retained,...prepared],retained,imported:prepared,refreshed,added,duplicatesRemoved};
   }
 
   return { RAW_ROOT, PAGE_URLS, cleanText, renderEntries, convertMonster, convertSpell, extract, sourceIndexUrl, sourceFileUrl, resolveInput, reconcileImported };
